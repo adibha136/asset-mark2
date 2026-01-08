@@ -936,7 +936,7 @@ export default function ManageUserAssets() {
                       </div>
                     ))
                   ) : (
-                    <div className="col-span-2 py-12 border-2 border-dashed rounded-[2rem] flex flex-col items-center justify-center gap-4 bg-muted/20">
+                    <div className="col-span-1 md:col-span-2 py-12 border-2 border-dashed rounded-[2rem] flex flex-col items-center justify-center gap-4 bg-muted/20">
                       <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center">
                         <FileStack className="w-6 h-6 text-muted-foreground/40" />
                       </div>
@@ -951,7 +951,7 @@ export default function ManageUserAssets() {
               <div className="bg-muted/20 border rounded-[2rem] p-8 space-y-8 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 blur-2xl" />
 
-                <div className="grid grid-cols-2 gap-6 relative">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative">
                   <div className="space-y-3">
                     <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Asset Identity</Label>
                     <div className="relative group">

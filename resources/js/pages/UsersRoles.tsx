@@ -319,7 +319,7 @@ export default function UsersRoles() {
         }
       >
         <div className="grid gap-6">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Full Name</Label>
               <Input 
@@ -339,7 +339,7 @@ export default function UsersRoles() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Password</Label>
               <Input 
@@ -398,7 +398,7 @@ export default function UsersRoles() {
         }
       >
         <div className="grid gap-6">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Full Name</Label>
               <Input 
@@ -418,7 +418,7 @@ export default function UsersRoles() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Password</Label>
               <Input 
@@ -514,7 +514,7 @@ export default function UsersRoles() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label className="text-muted-foreground">Email</Label>
                 <div className="flex items-center gap-2">

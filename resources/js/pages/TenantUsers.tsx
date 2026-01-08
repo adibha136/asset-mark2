@@ -220,28 +220,28 @@ export default function TenantUsers() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between opacity-0 animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 opacity-0 animate-fade-in">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Directory Users</h1>
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-muted-foreground text-sm">
               <span>{viewMode === 'live' ? 'Live users from' : 'Synced users from'} <span className="font-semibold text-foreground">{tenant?.name}</span></span>
               {tenant?.last_sync_at && (
-                <>
+                <div className="hidden sm:flex items-center gap-2">
                   <span className="text-muted-foreground/30">•</span>
                   <span className="flex items-center gap-1">
                     <RefreshCw className="w-3 h-3" />
                     Last synced: {new Date(tenant.last_sync_at).toLocaleString()}
                   </span>
-                </>
+                </div>
               )}
             </div>
           </div>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-center">
           <Button
             variant={tenant?.auto_directory_sync ? 'default' : 'outline'}
             onClick={() => autoSyncMutation.mutate(!tenant?.auto_directory_sync)}

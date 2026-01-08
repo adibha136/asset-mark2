@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ChecklistController;
+use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\MailSettingController;
 use App\Jobs\FetchUserPhoto;
 use App\Jobs\SyncTenantDirectory;
@@ -37,6 +38,8 @@ Route::prefix('api')->group(function () {
 
     Route::get('/checklist-submissions', [ChecklistController::class, 'getSubmission']);
     Route::post('/checklist-submissions/answer', [ChecklistController::class, 'submitAnswer']);
+
+    Route::get('/search', [GlobalSearchController::class, 'search']);
 
     Route::post('/login', function (Request $request) {
     $credentials = $request->validate([
@@ -166,26 +169,6 @@ Route::get('/tenants', function () {
     ])->get());
 });
 
-Route::get('/tenants/{id}', function ($id) {
-    $tenant = Tenant::findOrFail($id);
-
-    return response()->json($tenant);
-});
-
-Route::get('/tenants/{id}/users', function ($id) {
-    $tenant = Tenant::findOrFail($id);
-
-    // Step 1: Return cached users immediately
-    $users = DirectoryUser::where('tenant_id', $tenant->id)->get();
-
-    // Step 2: Trigger background sync if needed (e.g. if we have credentials)
-    if ($tenant->fetch_from_graph && $tenant->azure_tenant_id && $tenant->client_id) {
-        SyncTenantDirectory::dispatch($tenant->id);
-    }
-
-    return response()->json($users);
-});
-
 Route::get('/tenants/user-photo', function (Request $request) {
     $userId = $request->query('user_id');
     $tenantId = $request->query('tenant_id');
@@ -217,6 +200,26 @@ Route::get('/tenants/user-photo', function (Request $request) {
     return redirect('https://ui-avatars.com/api/?name='.urlencode($name).'&background=random');
 });
 
+Route::get('/tenants/{id}', function ($id) {
+    $tenant = Tenant::findOrFail($id);
+
+    return response()->json($tenant);
+});
+
+Route::get('/tenants/{id}/users', function ($id) {
+    $tenant = Tenant::findOrFail($id);
+
+    // Step 1: Return cached users immediately
+    $users = DirectoryUser::where('tenant_id', $tenant->id)->get();
+
+    // Step 2: Trigger background sync if needed (e.g. if we have credentials)
+    if ($tenant->fetch_from_graph && $tenant->azure_tenant_id && $tenant->client_id) {
+        SyncTenantDirectory::dispatch($tenant->id);
+    }
+
+    return response()->json($users);
+});
+
 Route::get('/assets', function () {
     return response()->json([
         ['id' => '1', 'name' => 'MacBook Pro 16"', 'type' => 'Laptop', 'status' => 'active', 'location' => 'Office A', 'assignedTo' => 'John Doe', 'serialNumber' => 'MBP-2024-001'],
@@ -229,10 +232,37 @@ Route::get('/assets', function () {
 });
 
 Route::get('/assets/{id}', function ($id) {
+    $dbAsset = Asset::find($id);
+
+    if ($dbAsset) {
+        // Map DB fields to frontend expected fields
+        return response()->json([
+            'id' => $dbAsset->id,
+            'name' => $dbAsset->name,
+            'type' => $dbAsset->type,
+            'status' => $dbAsset->status,
+            'serialNumber' => $dbAsset->serial_number,
+            'location' => 'Main Office', // Default mock location as it's not in DB yet
+            'assignedTo' => $dbAsset->assignedUsers->first()->name ?? 'Unassigned',
+            'purchaseDate' => $dbAsset->created_at->format('Y-m-d'),
+            'warrantyUntil' => $dbAsset->warranty_expiry ? $dbAsset->warranty_expiry->format('Y-m-d') : '',
+            'description' => $dbAsset->description ?? '',
+            'specs' => [
+                'Processor' => 'M3 Max',
+                'Memory' => '64GB',
+                'Storage' => '2TB SSD',
+                'Display' => '16-inch Liquid Retina XDR',
+            ],
+            'history' => [
+                ['id' => 1, 'action' => 'Asset created', 'user' => 'System Admin', 'date' => $dbAsset->created_at->diffForHumans()],
+            ],
+        ]);
+    }
+
     $assets = [
-        ['id' => '1', 'name' => 'MacBook Pro 16"', 'type' => 'Laptop', 'status' => 'active', 'location' => 'Office A', 'assignedTo' => 'John Doe', 'serialNumber' => 'MBP-2024-001', 'purchaseDate' => '2023-11-15', 'warranty' => '2025-11-15', 'description' => 'M3 Max, 64GB RAM, 2TB SSD'],
-        ['id' => '2', 'name' => 'Dell Monitor 27"', 'type' => 'Monitor', 'status' => 'active', 'location' => 'Office A', 'assignedTo' => 'Jane Smith', 'serialNumber' => 'DM-2024-002', 'purchaseDate' => '2023-10-20', 'warranty' => '2026-10-20', 'description' => '4K UHD UltraSharp'],
-        ['id' => '3', 'name' => 'iPhone 15 Pro', 'type' => 'Mobile', 'status' => 'active', 'location' => 'Remote', 'assignedTo' => 'Mike Johnson', 'serialNumber' => 'IP-2024-003', 'purchaseDate' => '2024-01-05', 'warranty' => '2025-01-05', 'description' => 'Titanium, 256GB'],
+        ['id' => '1', 'name' => 'MacBook Pro 16"', 'type' => 'Laptop', 'status' => 'active', 'location' => 'Office A', 'assignedTo' => 'John Doe', 'serialNumber' => 'MBP-2024-001', 'purchaseDate' => '2023-11-15', 'warrantyUntil' => '2025-11-15', 'description' => 'M3 Max, 64GB RAM, 2TB SSD', 'specs' => ['Processor' => 'M3 Max', 'Memory' => '64GB', 'Storage' => '2TB SSD'], 'history' => [['id' => 1, 'action' => 'Purchased', 'user' => 'Admin', 'date' => '2023-11-15']]],
+        ['id' => '2', 'name' => 'Dell Monitor 27"', 'type' => 'Monitor', 'status' => 'active', 'location' => 'Office A', 'assignedTo' => 'Jane Smith', 'serialNumber' => 'DM-2024-002', 'purchaseDate' => '2023-10-20', 'warrantyUntil' => '2026-10-20', 'description' => '4K UHD UltraSharp', 'specs' => ['Resolution' => '4K', 'Size' => '27 inch'], 'history' => [['id' => 1, 'action' => 'Purchased', 'user' => 'Admin', 'date' => '2023-10-20']]],
+        ['id' => '3', 'name' => 'iPhone 15 Pro', 'type' => 'Mobile', 'status' => 'active', 'location' => 'Remote', 'assignedTo' => 'Mike Johnson', 'serialNumber' => 'IP-2024-003', 'purchaseDate' => '2024-01-05', 'warrantyUntil' => '2025-01-05', 'description' => 'Titanium, 256GB', 'specs' => ['Model' => '15 Pro', 'Storage' => '256GB'], 'history' => [['id' => 1, 'action' => 'Purchased', 'user' => 'Admin', 'date' => '2024-01-05']]],
     ];
 
     foreach ($assets as $asset) {
@@ -242,6 +272,23 @@ Route::get('/assets/{id}', function ($id) {
     }
 
     return response()->json(['message' => 'Asset not found'], 404);
+});
+
+Route::put('/assets/{id}', function (Request $request, $id) {
+    $asset = Asset::findOrFail($id);
+    
+    $validated = $request->validate([
+        'name' => 'required|string',
+        'type' => 'required|string',
+        'serial_number' => 'nullable|string',
+        'status' => 'required|string',
+        'description' => 'nullable|string',
+        'warranty_expiry' => 'nullable|date',
+    ]);
+
+    $asset->update($validated);
+
+    return response()->json($asset);
 });
 
 Route::post('/tenants', function (Request $request) {

@@ -399,7 +399,7 @@ export default function Tenants() {
         }
       >
         <div className="grid gap-6">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Organization Name</Label>
               <Input
@@ -427,7 +427,7 @@ export default function Tenants() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Tenant ID</Label>
               <Input
@@ -514,7 +514,7 @@ export default function Tenants() {
         }
       >
         <div className="grid gap-6">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Organization Name</Label>
               <Input
@@ -542,7 +542,7 @@ export default function Tenants() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Tenant ID</Label>
               <Input
@@ -632,7 +632,7 @@ export default function Tenants() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div>
                   <h4 className="text-sm font-medium text-muted-foreground mb-1">Infrastructure</h4>

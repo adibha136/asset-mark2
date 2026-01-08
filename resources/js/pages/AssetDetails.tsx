@@ -1,5 +1,6 @@
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { 
   ChevronLeft, 
@@ -20,12 +21,28 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Modal } from "@/components/shared/Modal";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
 
 const AssetDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    type: "",
+    serial_number: "",
+    status: "",
+    description: "",
+    warranty_expiry: "",
+  });
 
-  const { data: asset, isLoading, error } = useQuery({
+  const { data: asset, isLoading, error, refetch } = useQuery({
     queryKey: ["asset", id],
     queryFn: async () => {
       const response = await api.get(`/assets/${id}`);
@@ -33,6 +50,40 @@ const AssetDetails = () => {
     },
     enabled: !!id,
   });
+
+  useEffect(() => {
+    if (asset) {
+      setEditForm({
+        name: asset.name || "",
+        type: asset.type || "",
+        serial_number: asset.serialNumber || "",
+        status: asset.status || "",
+        description: asset.description || "",
+        warranty_expiry: asset.warrantyUntil || "",
+      });
+    }
+  }, [asset]);
+
+  const updateMutation = useMutation({
+    mutationFn: async (formData: any) => {
+      const response = await api.put(`/assets/${id}`, formData);
+      return response.data;
+    },
+    onSuccess: () => {
+      toast.success("Asset updated successfully");
+      setIsEditModalOpen(false);
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["assets"] });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || "Failed to update asset");
+    },
+  });
+
+  const handleUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateMutation.mutate(editForm);
+  };
 
   if (isLoading) return <div className="p-8 text-center">Loading asset details...</div>;
   if (error || !asset) return <div className="p-8 text-center text-destructive">Error loading asset details.</div>;
@@ -53,13 +104,13 @@ const AssetDetails = () => {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold tracking-tight">{asset.name}</h1>
-              <Badge variant="success" className="capitalize">{asset.status}</Badge>
+              <Badge variant={asset.status === 'active' || asset.status === 'available' ? "success" : "warning"} className="capitalize">{asset.status}</Badge>
             </div>
             <p className="text-muted-foreground">Serial: {asset.serialNumber}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => setIsEditModalOpen(true)}>
             <Edit className="h-4 w-4 mr-2" /> Edit
           </Button>
           <Button size="sm" className="btn-gradient">
@@ -70,6 +121,96 @@ const AssetDetails = () => {
           </Button>
         </div>
       </div>
+
+      {/* Edit Modal */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title="Edit Asset"
+        description="Update the asset information below."
+      >
+        <form onSubmit={handleUpdate} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Asset Name</Label>
+              <Input
+                id="name"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="type">Type</Label>
+              <Select
+                value={editForm.type}
+                onValueChange={(value) => setEditForm({ ...editForm, type: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hardware">Hardware</SelectItem>
+                  <SelectItem value="software">Software</SelectItem>
+                  <SelectItem value="license">License</SelectItem>
+                  <SelectItem value="peripheral">Peripheral</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="serial_number">Serial Number</Label>
+              <Input
+                id="serial_number"
+                value={editForm.serial_number}
+                onChange={(e) => setEditForm({ ...editForm, serial_number: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Select
+                value={editForm.status}
+                onValueChange={(value) => setEditForm({ ...editForm, status: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="available">Available</SelectItem>
+                  <SelectItem value="maintenance">Maintenance</SelectItem>
+                  <SelectItem value="retired">Retired</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="warranty_expiry">Warranty Expiry</Label>
+              <Input
+                id="warranty_expiry"
+                type="date"
+                value={editForm.warranty_expiry}
+                onChange={(e) => setEditForm({ ...editForm, warranty_expiry: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                rows={3}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-4">
+            <Button type="button" variant="outline" onClick={() => setIsEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Info Cards */}
@@ -108,9 +249,15 @@ const AssetDetails = () => {
                 <div className="flex items-center gap-3 text-sm">
                   <ShieldCheck className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Warranty:</span>
-                  <span className="font-medium">{asset.warrantyUntil}</span>
+                  <span className="font-medium">{asset.warrantyUntil || "No warranty info"}</span>
                 </div>
               </div>
+              {asset.description && (
+                <div className="col-span-2 pt-4">
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Description</span>
+                  <p className="text-sm mt-1">{asset.description}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -211,16 +358,18 @@ const AssetDetails = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Registered</span>
+                <span className="font-medium">{asset.purchaseDate}</span>
+              </div>
+              <div className="flex justify-between text-xs">
                 <span className="text-muted-foreground">Age</span>
-                <span className="font-medium">2 months</span>
+                <span className="font-medium">
+                  {asset.purchaseDate ? `${Math.floor((new Date().getTime() - new Date(asset.purchaseDate).getTime()) / (1000 * 60 * 60 * 24 * 30.44))} months` : "N/A"}
+                </span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-muted-foreground">Estimated Value</span>
                 <span className="font-medium">$2,499.00</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">Depreciation</span>
-                <span className="font-medium text-destructive">- $200.00</span>
               </div>
             </CardContent>
           </Card>
