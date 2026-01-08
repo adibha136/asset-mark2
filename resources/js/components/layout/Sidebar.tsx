@@ -26,7 +26,6 @@ const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Assets", href: "/assets", icon: Package },
   { name: "Tenants", href: "/tenants", icon: Building2 },
-  { name: "Auto Sync", href: "/sync", icon: RefreshCw },
   { name: "Users & Roles", href: "/users", icon: Users },
   { name: "Checklists", href: "/checklists", icon: ClipboardCheck },
 ];

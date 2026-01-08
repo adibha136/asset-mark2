@@ -8,13 +8,13 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import Dashboard from "./pages/Dashboard";
 import Assets from "./pages/Assets";
 import Tenants from "./pages/Tenants";
-import AutoSync from "./pages/AutoSync";
 import UsersRoles from "./pages/UsersRoles";
 import TenantUsers from "./pages/TenantUsers";
 import AssetDetails from "./pages/AssetDetails";
 import ManageUserAssets from "./pages/ManageUserAssets";
 import Settings from "./pages/Settings";
 import Checklists from "./pages/Checklists";
+import Help from "./pages/Help";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
@@ -40,10 +40,10 @@ const App = () => (
                     <Route path="/tenants" element={<Tenants />} />
                     <Route path="/tenants/:id/users" element={<TenantUsers />} />
                     <Route path="/tenants/:tenantId/users/:userId/assets" element={<ManageUserAssets />} />
-                    <Route path="/sync" element={<AutoSync />} />
                     <Route path="/users" element={<UsersRoles />} />
                     <Route path="/checklists" element={<Checklists />} />
                     <Route path="/settings" element={<Settings />} />
+                    <Route path="/help" element={<Help />} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 </AdminLayout>

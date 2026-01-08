@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
-import { Plus, Search, Building2, Users, Package, MoreHorizontal, Edit, Trash2, Eye, Settings, RefreshCw, ExternalLink } from "lucide-react";
+import { Plus, Search, Building2, Users, Package, MoreHorizontal, Edit, Trash2, Eye, Settings, RefreshCw, ExternalLink, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -466,7 +466,17 @@ export default function Tenants() {
           </div>
 
           <div className="space-y-4 p-4 rounded-xl bg-muted/50">
-            <h4 className="font-medium">Sync Settings</h4>
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium">Sync Settings</h4>
+              <button 
+                type="button"
+                onClick={() => navigate('/help')}
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                <Info className="w-3 h-3" />
+                How to connect?
+              </button>
+            </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium">Auto Directory Sync</p>
@@ -581,7 +591,17 @@ export default function Tenants() {
           </div>
 
           <div className="space-y-4 p-4 rounded-xl bg-muted/50">
-            <h4 className="font-medium">Sync Settings</h4>
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium">Sync Settings</h4>
+              <button 
+                type="button"
+                onClick={() => navigate('/help')}
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                <Info className="w-3 h-3" />
+                How to connect?
+              </button>
+            </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium">Auto Directory Sync</p>

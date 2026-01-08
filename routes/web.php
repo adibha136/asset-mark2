@@ -8,6 +8,8 @@ use App\Jobs\SyncTenantDirectory;
 use App\Models\Asset;
 use App\Models\AssetAssignment;
 use App\Models\DirectoryUser;
+use App\Models\Role;
+use App\Models\RolePermission;
 use App\Models\SyncLog;
 use App\Models\SyncSetting;
 use App\Models\Tenant;
@@ -87,68 +89,98 @@ Route::get('/dashboard/stats', function () {
     $totalUsersCount = DirectoryUser::count();
     $lastSync = SyncLog::latest()->first();
 
-    // Mock growth data - in a real app this would be grouped by month
-    $growthData = [
-        ['name' => 'Jan', 'assets' => 120, 'users' => 45],
-        ['name' => 'Feb', 'assets' => 150, 'users' => 52],
-        ['name' => 'Mar', 'assets' => 180, 'users' => 58],
-        ['name' => 'Apr', 'assets' => 220, 'users' => 65],
-        ['name' => 'May', 'assets' => 280, 'users' => 78],
-        ['name' => 'Jun', 'assets' => 340, 'users' => 85],
-        ['name' => 'Jul', 'assets' => $totalAssetsCount, 'users' => $totalUsersCount],
+    // Calculate growth data dynamically for the last 6 months
+    $growthData = [];
+    for ($i = 5; $i >= 0; $i--) {
+        $month = now()->subMonths($i);
+        $monthEnd = $month->copy()->endOfMonth();
+        
+        $assets = Asset::where('created_at', '<=', $monthEnd)->count();
+        $users = DirectoryUser::where('created_at', '<=', $monthEnd)->count();
+        
+        $growthData[] = [
+            'name' => $month->format('M'),
+            'assets' => $assets,
+            'users' => $users
+        ];
+    }
+
+    // Calculate changes compared to last month
+    $startOfCurrentMonth = now()->startOfMonth();
+    $assetsLastMonth = Asset::where('created_at', '<', $startOfCurrentMonth)->count();
+    $usersLastMonth = DirectoryUser::where('created_at', '<', $startOfCurrentMonth)->count();
+    $tenantsLastMonth = Tenant::where('created_at', '<', $startOfCurrentMonth)->count();
+
+    $calculateChange = function ($current, $previous) {
+        if ($previous == 0) return $current > 0 ? ['value' => '+100%', 'type' => 'positive'] : ['value' => '0%', 'type' => 'neutral'];
+        $diff = (($current - $previous) / $previous) * 100;
+        return [
+            'value' => ($diff >= 0 ? '+' : '') . number_format($diff, 1) . '%',
+            'type' => $diff > 0 ? 'positive' : ($diff < 0 ? 'negative' : 'neutral')
+        ];
+    };
+
+    $assetChange = $calculateChange($totalAssetsCount, $assetsLastMonth);
+    $userChange = $calculateChange($totalUsersCount, $usersLastMonth);
+    $tenantChange = [
+        'value' => '+' . ($activeTenantsCount - $tenantsLastMonth),
+        'type' => ($activeTenantsCount - $tenantsLastMonth) > 0 ? 'positive' : 'neutral'
     ];
 
     // Get recent activities
-    $recentAssets = Asset::latest()->take(2)->get()->map(function ($asset) {
+    $recentAssets = Asset::latest()->take(3)->get()->map(function ($asset) {
         return [
             'id' => 'asset-'.$asset->id,
             'type' => 'asset',
             'title' => 'New asset registered',
             'description' => $asset->name.' added to inventory',
+            'timestamp' => $asset->created_at,
             'time' => $asset->created_at->diffForHumans(),
             'color' => 'text-primary bg-primary/10',
         ];
     });
 
-    $recentTenants = Tenant::latest()->take(1)->get()->map(function ($tenant) {
+    $recentTenants = Tenant::latest()->take(3)->get()->map(function ($tenant) {
         return [
             'id' => 'tenant-'.$tenant->id,
             'type' => 'tenant',
             'title' => 'New tenant onboarded',
             'description' => $tenant->name.' joined the platform',
+            'timestamp' => $tenant->created_at,
             'time' => $tenant->created_at->diffForHumans(),
             'color' => 'text-warning bg-warning/10',
         ];
     });
 
-    $recentSyncs = SyncLog::latest()->take(2)->get()->map(function ($log) {
+    $recentSyncs = SyncLog::latest()->take(3)->get()->map(function ($log) {
         return [
             'id' => 'sync-'.$log->id,
             'type' => 'sync',
             'title' => 'Directory sync completed',
             'description' => $log->records_synced.' records synchronized from '.$log->source,
+            'timestamp' => $log->created_at,
             'time' => $log->created_at->diffForHumans(),
             'color' => 'text-success bg-success/10',
         ];
     });
 
-    $activities = $recentAssets->concat($recentTenants)->concat($recentSyncs)->sortByDesc('time')->values()->take(5);
+    $activities = $recentAssets->concat($recentTenants)->concat($recentSyncs)->sortByDesc('timestamp')->values()->take(5);
 
     return response()->json([
         'totalAssets' => [
             'value' => number_format($totalAssetsCount),
-            'change' => '+12.5%',
-            'changeType' => 'positive',
+            'change' => $assetChange['value'],
+            'changeType' => $assetChange['type'],
         ],
         'activeTenants' => [
             'value' => (string) $activeTenantsCount,
-            'change' => '+2',
-            'changeType' => 'positive',
+            'change' => $tenantChange['value'],
+            'changeType' => $tenantChange['type'],
         ],
         'totalUsers' => [
             'value' => number_format($totalUsersCount),
-            'change' => '+18%',
-            'changeType' => 'positive',
+            'change' => $userChange['value'],
+            'changeType' => $userChange['type'],
         ],
         'syncStatus' => [
             'value' => $lastSync ? ($lastSync->status === 'success' ? 'Healthy' : 'Issues') : 'Never',
@@ -435,6 +467,67 @@ Route::put('/tenants/{id}', function (Request $request, $id) {
 Route::delete('/tenants/{id}', function ($id) {
     Tenant::destroy($id);
 
+    return response()->json(null, 204);
+});
+
+Route::get('/roles', function () {
+    return response()->json(Role::with('permissions')->get());
+});
+
+Route::post('/roles', function (Request $request) {
+    $request->validate([
+        'name' => 'required|unique:roles',
+        'description' => 'nullable',
+    ]);
+
+    $role = Role::create([
+        'name' => $request->name,
+        'slug' => strtolower(str_replace(' ', '-', $request->name)),
+        'description' => $request->description,
+    ]);
+
+    // Create default permissions for all menus
+    $menus = ['dashboard', 'assets', 'tenants', 'users', 'checklists', 'settings'];
+    foreach ($menus as $menu) {
+        RolePermission::create([
+            'role_id' => $role->id,
+            'menu' => $menu,
+            'can_view' => false,
+            'can_add' => false,
+            'can_edit' => false,
+            'can_delete' => false,
+        ]);
+    }
+
+    return response()->json($role->load('permissions'), 201);
+});
+
+Route::put('/roles/{id}', function (Request $request, $id) {
+    $role = Role::findOrFail($id);
+    $role->update($request->only(['name', 'description']));
+
+    if ($request->has('permissions')) {
+        foreach ($request->permissions as $permData) {
+            RolePermission::where('role_id', $role->id)
+                ->where('menu', $permData['menu'])
+                ->update([
+                    'can_view' => $permData['can_view'],
+                    'can_add' => $permData['can_add'],
+                    'can_edit' => $permData['can_edit'],
+                    'can_delete' => $permData['can_delete'],
+                ]);
+        }
+    }
+
+    return response()->json($role->load('permissions'));
+});
+
+Route::delete('/roles/{id}', function ($id) {
+    $role = Role::findOrFail($id);
+    if (in_array($role->slug, ['admin'])) {
+        return response()->json(['message' => 'Cannot delete admin role'], 403);
+    }
+    $role->delete();
     return response()->json(null, 204);
 });
 

@@ -1,7 +1,10 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
-import { Plus, Search, MoreHorizontal, Edit, Trash2, Eye, Shield, User, Mail, Phone, Hash } from "lucide-react";
+import { 
+  Plus, Search, MoreHorizontal, Edit, Trash2, Eye, 
+  Shield, User, Mail, Phone, Lock, Check, X, ShieldAlert 
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +13,7 @@ import { Modal, ConfirmModal } from "@/components/shared/Modal";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -23,27 +27,37 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface UserData {
   id: string;
   name: string;
   email: string;
   phone: string;
-  role: "admin" | "manager" | "user" | "viewer";
+  role: string;
   status: "active" | "inactive";
   avatar?: string;
   lastActive: string;
 }
 
-const dummyUsers: UserData[] = [
-  { id: "USR-001", name: "John Doe", email: "john.doe@acme.com", phone: "+1 (555) 123-4567", role: "admin", status: "active", avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face", lastActive: "2 min ago" },
-  { id: "USR-002", name: "Sarah Johnson", email: "sarah.j@techstart.io", phone: "+1 (555) 234-5678", role: "manager", status: "active", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&crop=face", lastActive: "15 min ago" },
-  { id: "USR-003", name: "Mike Chen", email: "mike.chen@globalsys.net", phone: "+1 (555) 345-6789", role: "user", status: "active", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face", lastActive: "1 hour ago" },
-  { id: "USR-004", name: "Emily Davis", email: "emily.d@innovlabs.co", phone: "+1 (555) 456-7890", role: "viewer", status: "inactive", avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&crop=face", lastActive: "3 days ago" },
-  { id: "USR-005", name: "Alex Thompson", email: "alex.t@nextgen.com", phone: "+1 (555) 567-8901", role: "manager", status: "active", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=face", lastActive: "30 min ago" },
-  { id: "USR-006", name: "Lisa Wang", email: "lisa.w@cloudfirst.io", phone: "+1 (555) 678-9012", role: "user", status: "active", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=face", lastActive: "45 min ago" },
-];
+interface Permission {
+  id: number;
+  menu: string;
+  can_view: boolean;
+  can_add: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+}
+
+interface Role {
+  id: number;
+  name: string;
+  slug: string;
+  description: string;
+  permissions: Permission[];
+}
 
 const roleColors: Record<string, string> = {
   admin: "bg-primary/15 text-primary",
@@ -53,14 +67,24 @@ const roleColors: Record<string, string> = {
 };
 
 export default function UsersRoles() {
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("users");
   const [searchQuery, setSearchQuery] = useState("");
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  
+  // User Modals
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
-  const [isRoleChangeModalOpen, setIsRoleChangeModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleteUserModalOpen, setIsDeleteUserModalOpen] = useState(false);
+  
+  // Role Modals
+  const [isAddRoleModalOpen, setIsAddRoleModalOpen] = useState(false);
+  const [isEditRoleModalOpen, setIsEditRoleModalOpen] = useState(false);
+  const [isDeleteRoleModalOpen, setIsDeleteRoleModalOpen] = useState(false);
+  
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
-  const [newRole, setNewRole] = useState<string>("");
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [editRole, setEditRole] = useState<Partial<Role>>({});
+
   const [newUser, setNewUser] = useState({
     name: "",
     email: "",
@@ -70,7 +94,8 @@ export default function UsersRoles() {
   });
   const [editUser, setEditUser] = useState<Partial<UserData>>({});
 
-  const { data: users = [], isLoading, refetch } = useQuery<UserData[]>({
+  // Queries
+  const { data: users = [], isLoading: isLoadingUsers } = useQuery<UserData[]>({
     queryKey: ["users"],
     queryFn: async () => {
       const response = await api.get("/users");
@@ -78,102 +103,89 @@ export default function UsersRoles() {
     },
   });
 
-  const handleAddUser = async () => {
-    try {
-      await api.post("/users", newUser);
-      setIsAddUserModalOpen(false);
-      setNewUser({
-        name: "",
-        email: "",
-        password: "",
-        role: "user",
-        phone: "",
-      });
-      refetch();
-    } catch (error) {
-      console.error("Failed to add user:", error);
-    }
-  };
+  const { data: roles = [], isLoading: isLoadingRoles } = useQuery<Role[]>({
+    queryKey: ["roles"],
+    queryFn: async () => {
+      const response = await api.get("/roles");
+      return response.data;
+    },
+  });
 
-  const handleUpdateUser = async () => {
-    if (!selectedUser) return;
-    try {
-      await api.put(`/users/${selectedUser.id}`, editUser);
-      setIsEditUserModalOpen(false);
-      refetch();
-    } catch (error) {
-      console.error("Failed to update user:", error);
+  // User Mutations
+  const addUserMutation = useMutation({
+    mutationFn: (data: any) => api.post("/users", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      setIsAddUserModalOpen(false);
+      toast.success("User added successfully");
     }
-  };
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: (data: any) => api.put(`/users/${data.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      setIsEditUserModalOpen(false);
+      toast.success("User updated successfully");
+    }
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/users/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      setIsDeleteUserModalOpen(false);
+      toast.success("User deleted successfully");
+    }
+  });
+
+  // Role Mutations
+  const addRoleMutation = useMutation({
+    mutationFn: (data: any) => api.post("/roles", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["roles"] });
+      setIsAddRoleModalOpen(false);
+      toast.success("Role created successfully");
+    }
+  });
+
+  const updateRoleMutation = useMutation({
+    mutationFn: (data: any) => api.put(`/roles/${data.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["roles"] });
+      setIsEditRoleModalOpen(false);
+      toast.success("Role permissions updated");
+    }
+  });
+
+  const deleteRoleMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/roles/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["roles"] });
+      setIsDeleteRoleModalOpen(false);
+      toast.success("Role deleted successfully");
+    }
+  });
 
   const filteredUsers = users.filter((user) =>
     user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.id.toLowerCase().includes(searchQuery.toLowerCase())
+    user.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleRoleChange = (user: UserData, role: string) => {
-    setSelectedUser(user);
-    setNewRole(role);
-    setIsRoleChangeModalOpen(true);
-  };
-
-  const confirmRoleChange = async () => {
-    if (!selectedUser) return;
-    try {
-      await api.put(`/users/${selectedUser.id}`, { role: newRole });
-      setIsRoleChangeModalOpen(false);
-      refetch();
-    } catch (error) {
-      console.error("Failed to change role:", error);
-    }
-  };
-
-  const handleDeleteUser = async () => {
-    if (!selectedUser) return;
-    try {
-      await api.delete(`/users/${selectedUser.id}`);
-      setIsDeleteModalOpen(false);
-      refetch();
-    } catch (error) {
-      console.error("Failed to delete user:", error);
-    }
-  };
-
-  const columns = [
+  const userColumns = [
     {
       key: "name",
       header: "User",
       render: (user: UserData) => (
         <div className="flex items-center gap-3">
           <Avatar className="w-10 h-10">
-            <AvatarImage src={user.avatar} loading="lazy" />
+            <AvatarImage src={user.avatar} />
             <AvatarFallback>{user.name.slice(0, 2).toUpperCase()}</AvatarFallback>
           </Avatar>
           <div>
-            <p className="font-medium">{user.name}</p>
-            <p className="text-xs text-muted-foreground">{user.id}</p>
+            <p className="font-medium text-sm">{user.name}</p>
+            <p className="text-xs text-muted-foreground">{user.email}</p>
           </div>
-        </div>
-      ),
-    },
-    {
-      key: "email",
-      header: "Email",
-      render: (user: UserData) => (
-        <div className="flex items-center gap-2">
-          <Mail className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm">{user.email}</span>
-        </div>
-      ),
-    },
-    {
-      key: "phone",
-      header: "Phone",
-      render: (user: UserData) => (
-        <div className="flex items-center gap-2">
-          <Phone className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm">{user.phone}</span>
         </div>
       ),
     },
@@ -181,38 +193,9 @@ export default function UsersRoles() {
       key: "role",
       header: "Role",
       render: (user: UserData) => (
-        <Select
-          value={user.role}
-          onValueChange={(value) => handleRoleChange(user, value)}
-        >
-          <SelectTrigger className="w-32 h-8">
-            <div className={cn("px-2 py-0.5 rounded-full text-xs font-medium capitalize", roleColors[user.role])}>
-              {user.role}
-            </div>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="admin">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4" /> Admin
-              </div>
-            </SelectItem>
-            <SelectItem value="manager">
-              <div className="flex items-center gap-2">
-                <User className="w-4 h-4" /> Manager
-              </div>
-            </SelectItem>
-            <SelectItem value="user">
-              <div className="flex items-center gap-2">
-                <User className="w-4 h-4" /> User
-              </div>
-            </SelectItem>
-            <SelectItem value="viewer">
-              <div className="flex items-center gap-2">
-                <Eye className="w-4 h-4" /> Viewer
-              </div>
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        <Badge variant="outline" className={cn("capitalize", roleColors[user.role] || "bg-muted")}>
+          {user.role}
+        </Badge>
       ),
     },
     {
@@ -222,13 +205,6 @@ export default function UsersRoles() {
         <Badge variant={user.status === "active" ? "success" : "muted"} className="capitalize">
           {user.status}
         </Badge>
-      ),
-    },
-    {
-      key: "lastActive",
-      header: "Last Active",
-      render: (user: UserData) => (
-        <span className="text-sm text-muted-foreground">{user.lastActive}</span>
       ),
     },
     {
@@ -244,22 +220,16 @@ export default function UsersRoles() {
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => {
               setSelectedUser(user);
-              setIsProfileModalOpen(true);
-            }}>
-              <Eye className="w-4 h-4 mr-2" /> View Profile
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              setSelectedUser(user);
               setEditUser(user);
               setIsEditUserModalOpen(true);
             }}>
-              <Edit className="w-4 h-4 mr-2" /> Edit
+              <Edit className="w-4 h-4 mr-2" /> Edit User
             </DropdownMenuItem>
             <DropdownMenuItem
               className="text-destructive"
               onClick={() => {
                 setSelectedUser(user);
-                setIsDeleteModalOpen(true);
+                setIsDeleteUserModalOpen(true);
               }}
             >
               <Trash2 className="w-4 h-4 mr-2" /> Delete
@@ -271,110 +241,229 @@ export default function UsersRoles() {
     },
   ];
 
+  const handleTogglePermission = (menu: string, action: string, value: boolean) => {
+    if (!editRole.permissions) return;
+    
+    const updatedPermissions = editRole.permissions.map(p => {
+      if (p.menu === menu) {
+        return { ...p, [action]: value };
+      }
+      return p;
+    });
+    
+    setEditRole({ ...editRole, permissions: updatedPermissions });
+  };
+
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="flex items-center justify-between opacity-0 animate-fade-in">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Users & Roles</h1>
-          <p className="text-muted-foreground">Manage user accounts and permissions</p>
+          <p className="text-muted-foreground">Manage accounts and menu-wise permissions</p>
         </div>
-        <Button variant="gradient" onClick={() => setIsAddUserModalOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" /> Add User
-        </Button>
+        <div className="flex gap-3">
+          {activeTab === "users" ? (
+            <Button variant="gradient" onClick={() => setIsAddUserModalOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" /> Add User
+            </Button>
+          ) : (
+            <Button variant="gradient" onClick={() => setIsAddRoleModalOpen(true)}>
+              <Shield className="w-4 h-4 mr-2" /> Create Role
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md opacity-0 animate-fade-in" style={{ animationDelay: "100ms" }}>
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Search users..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="users" className="gap-2">
+            <User className="w-4 h-4" />
+            Users
+          </TabsTrigger>
+          <TabsTrigger value="roles" className="gap-2">
+            <Shield className="w-4 h-4" />
+            Roles & Permissions
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Users Table */}
-      <div className="opacity-0 animate-fade-in" style={{ animationDelay: "200ms" }}>
-        <DataTable columns={columns} data={filteredUsers} />
-      </div>
+        <TabsContent value="users" className="space-y-4">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search users..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          
+          <div className="bg-card rounded-2xl border border-border overflow-hidden">
+            <DataTable 
+              columns={userColumns} 
+              data={filteredUsers} 
+              isLoading={isLoadingUsers}
+            />
+          </div>
+        </TabsContent>
 
-      {/* Add User Modal */}
+        <TabsContent value="roles" className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Roles List */}
+          <div className="md:col-span-1 space-y-4">
+            {roles.map((role) => (
+              <Card 
+                key={role.id} 
+                className={cn(
+                  "cursor-pointer transition-all hover:shadow-md",
+                  selectedRole?.id === role.id ? "border-primary bg-primary/5" : ""
+                )}
+                onClick={() => {
+                  setSelectedRole(role);
+                  setEditRole(role);
+                }}
+              >
+                <CardHeader className="p-4">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Shield className={cn("w-4 h-4", selectedRole?.id === role.id ? "text-primary" : "text-muted-foreground")} />
+                      {role.name}
+                    </CardTitle>
+                    {role.slug !== 'admin' && (
+                       <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedRole(role);
+                          setIsDeleteRoleModalOpen(true);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <CardDescription className="text-xs line-clamp-1">{role.description}</CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+
+          {/* Permissions Matrix */}
+          <div className="md:col-span-2">
+            {selectedRole ? (
+              <Card className="opacity-0 animate-fade-in">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Permissions: {selectedRole.name}</CardTitle>
+                      <CardDescription>Configure menu-wise access for this role</CardDescription>
+                    </div>
+                    <Button 
+                      variant="gradient" 
+                      size="sm"
+                      disabled={updateRoleMutation.isPending}
+                      onClick={() => updateRoleMutation.mutate(editRole)}
+                    >
+                      <Check className="w-4 h-4 mr-2" />
+                      Save Permissions
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/50 border-b border-border">
+                          <th className="text-left p-4 font-medium">Menu Module</th>
+                          <th className="text-center p-4 font-medium">View</th>
+                          <th className="text-center p-4 font-medium">Add</th>
+                          <th className="text-center p-4 font-medium">Edit</th>
+                          <th className="text-center p-4 font-medium">Delete</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {editRole.permissions?.map((perm) => (
+                          <tr key={perm.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="p-4 capitalize font-medium">{perm.menu}</td>
+                            <td className="p-4 text-center">
+                              <Switch 
+                                checked={perm.can_view} 
+                                onCheckedChange={(v) => handleTogglePermission(perm.menu, 'can_view', v)}
+                              />
+                            </td>
+                            <td className="p-4 text-center">
+                              <Switch 
+                                checked={perm.can_add} 
+                                onCheckedChange={(v) => handleTogglePermission(perm.menu, 'can_add', v)}
+                              />
+                            </td>
+                            <td className="p-4 text-center">
+                              <Switch 
+                                checked={perm.can_edit} 
+                                onCheckedChange={(v) => handleTogglePermission(perm.menu, 'can_edit', v)}
+                              />
+                            </td>
+                            <td className="p-4 text-center">
+                              <Switch 
+                                checked={perm.can_delete} 
+                                onCheckedChange={(v) => handleTogglePermission(perm.menu, 'can_delete', v)}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center p-12 border-2 border-dashed border-border rounded-2xl bg-muted/20">
+                <ShieldAlert className="w-12 h-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">Select a role to manage its permissions</p>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* Modals for Users */}
       <Modal
         open={isAddUserModalOpen}
         onOpenChange={setIsAddUserModalOpen}
         title="Add New User"
-        description="Create a new user account with specific permissions"
-        size="lg"
+        description="Create a new system user"
         footer={
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setIsAddUserModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="gradient" onClick={handleAddUser}>
-              Add User
-            </Button>
+            <Button variant="outline" onClick={() => setIsAddUserModalOpen(false)}>Cancel</Button>
+            <Button variant="gradient" onClick={() => addUserMutation.mutate(newUser)} disabled={addUserMutation.isPending}>Add User</Button>
           </div>
         }
       >
-        <div className="grid gap-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Full Name</Label>
-              <Input 
-                placeholder="John Doe" 
-                value={newUser.name}
-                onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-              />
+              <Label>Name</Label>
+              <Input value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} placeholder="Full name" />
             </div>
             <div className="space-y-2">
-              <Label>Email Address</Label>
-              <Input 
-                type="email"
-                placeholder="john@example.com" 
-                value={newUser.email}
-                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-              />
+              <Label>Email</Label>
+              <Input value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} placeholder="email@example.com" />
             </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Password</Label>
-              <Input 
-                type="password"
-                placeholder="min. 8 characters" 
-                value={newUser.password}
-                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-              />
+              <Input type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} placeholder="••••••••" />
             </div>
             <div className="space-y-2">
-              <Label>Phone Number</Label>
-              <Input 
-                placeholder="+1 (555) 000-0000" 
-                value={newUser.phone}
-                onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
-              />
+              <Label>Role</Label>
+              <Select value={newUser.role} onValueChange={v => setNewUser({...newUser, role: v})}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {roles.map(r => <SelectItem key={r.slug} value={r.slug}>{r.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Initial Role</Label>
-            <Select
-              value={newUser.role}
-              onValueChange={(value) => setNewUser({ ...newUser, role: value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a role" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="manager">Manager</SelectItem>
-                <SelectItem value="user">User</SelectItem>
-                <SelectItem value="viewer">Viewer</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
       </Modal>
@@ -384,87 +473,31 @@ export default function UsersRoles() {
         open={isEditUserModalOpen}
         onOpenChange={setIsEditUserModalOpen}
         title="Edit User"
-        description="Update user account details and permissions"
-        size="lg"
         footer={
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setIsEditUserModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="gradient" onClick={handleUpdateUser}>
-              Save Changes
-            </Button>
+            <Button variant="outline" onClick={() => setIsEditUserModalOpen(false)}>Cancel</Button>
+            <Button variant="gradient" onClick={() => updateUserMutation.mutate(editUser)}>Save Changes</Button>
           </div>
         }
       >
-        <div className="grid gap-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Full Name</Label>
-              <Input 
-                placeholder="John Doe" 
-                value={editUser.name || ""}
-                onChange={(e) => setEditUser({ ...editUser, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Email Address</Label>
-              <Input 
-                type="email"
-                placeholder="john@example.com" 
-                value={editUser.email || ""}
-                onChange={(e) => setEditUser({ ...editUser, email: e.target.value })}
-              />
-            </div>
+        <div className="grid gap-4">
+          <div className="space-y-2">
+            <Label>Name</Label>
+            <Input value={editUser.name || ""} onChange={e => setEditUser({...editUser, name: e.target.value})} />
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Password</Label>
-              <Input 
-                type="password"
-                placeholder="Leave blank to keep current" 
-                value={editUser.password || ""}
-                onChange={(e) => setEditUser({ ...editUser, password: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Phone Number</Label>
-              <Input 
-                placeholder="+1 (555) 000-0000" 
-                value={editUser.phone || ""}
-                onChange={(e) => setEditUser({ ...editUser, phone: e.target.value })}
-              />
-            </div>
-          </div>
-
           <div className="space-y-2">
             <Label>Role</Label>
-            <Select
-              value={editUser.role}
-              onValueChange={(value) => setEditUser({ ...editUser, role: value as any })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a role" />
-              </SelectTrigger>
+            <Select value={editUser.role} onValueChange={v => setEditUser({...editUser, role: v})}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="manager">Manager</SelectItem>
-                <SelectItem value="user">User</SelectItem>
-                <SelectItem value="viewer">Viewer</SelectItem>
+                {roles.map(r => <SelectItem key={r.slug} value={r.slug}>{r.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
-
           <div className="space-y-2">
             <Label>Status</Label>
-            <Select
-              value={editUser.status}
-              onValueChange={(value) => setEditUser({ ...editUser, status: value as any })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select status" />
-              </SelectTrigger>
+            <Select value={editUser.status} onValueChange={(v: any) => setEditUser({...editUser, status: v})}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="inactive">Inactive</SelectItem>
@@ -474,106 +507,53 @@ export default function UsersRoles() {
         </div>
       </Modal>
 
-      {/* User Profile Modal */}
+      {/* Delete User Confirm */}
+      <ConfirmModal
+        open={isDeleteUserModalOpen}
+        onOpenChange={setIsDeleteUserModalOpen}
+        title="Delete User"
+        description={`Are you sure you want to delete ${selectedUser?.name}? This action cannot be undone.`}
+        onConfirm={() => selectedUser && deleteUserMutation.mutate(selectedUser.id)}
+      />
+
+      {/* Add Role Modal */}
       <Modal
-        open={isProfileModalOpen}
-        onOpenChange={setIsProfileModalOpen}
-        title="User Profile"
-        size="lg"
+        open={isAddRoleModalOpen}
+        onOpenChange={setIsAddRoleModalOpen}
+        title="Create New Role"
+        description="Define a new role for system access"
         footer={
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setIsProfileModalOpen(false)}>
-              Close
-            </Button>
-            <Button variant="gradient" onClick={() => {
-              setEditUser(selectedUser!);
-              setIsEditUserModalOpen(true);
-              setIsProfileModalOpen(false);
-            }}>Edit Profile</Button>
+            <Button variant="outline" onClick={() => setIsAddRoleModalOpen(false)}>Cancel</Button>
+            <Button variant="gradient" onClick={() => addRoleMutation.mutate(editRole)}>Create Role</Button>
           </div>
         }
       >
-        {selectedUser && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-4">
-              <Avatar className="w-20 h-20">
-                <AvatarImage src={selectedUser.avatar} />
-                <AvatarFallback className="text-2xl">{selectedUser.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-              </Avatar>
-              <div>
-                <h3 className="text-xl font-semibold">{selectedUser.name}</h3>
-                <p className="text-muted-foreground">{selectedUser.id}</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <Badge variant={selectedUser.status === "active" ? "success" : "muted"} className="capitalize">
-                    {selectedUser.status}
-                  </Badge>
-                  <Badge className={cn("capitalize", roleColors[selectedUser.role])}>
-                    {selectedUser.role}
-                  </Badge>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label className="text-muted-foreground">Email</Label>
-                <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-muted-foreground" />
-                  <span>{selectedUser.email}</span>
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-muted-foreground">Phone</Label>
-                <div className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-muted-foreground" />
-                  <span>{selectedUser.phone}</span>
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-muted-foreground">User ID</Label>
-                <div className="flex items-center gap-2">
-                  <Hash className="w-4 h-4 text-muted-foreground" />
-                  <span>{selectedUser.id}</span>
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-muted-foreground">Last Active</Label>
-                <span>{selectedUser.lastActive}</span>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="font-medium">Account Status</Label>
-                  <p className="text-sm text-muted-foreground">Toggle user account activation</p>
-                </div>
-                <Switch checked={selectedUser.status === "active"} />
-              </div>
-            </div>
+        <div className="grid gap-4">
+          <div className="space-y-2">
+            <Label>Role Name</Label>
+            <Input 
+              placeholder="e.g. Technician" 
+              onChange={e => setEditRole({...editRole, name: e.target.value})} 
+            />
           </div>
-        )}
+          <div className="space-y-2">
+            <Label>Description</Label>
+            <Input 
+              placeholder="What this role does..." 
+              onChange={e => setEditRole({...editRole, description: e.target.value})} 
+            />
+          </div>
+        </div>
       </Modal>
 
-      {/* Role Change Confirmation */}
+      {/* Delete Role Confirm */}
       <ConfirmModal
-        open={isRoleChangeModalOpen}
-        onOpenChange={setIsRoleChangeModalOpen}
-        title="Confirm Role Change"
-        description={`Are you sure you want to change ${selectedUser?.name}'s role to "${newRole}"? This will update their permissions immediately.`}
-        confirmLabel="Change Role"
-        onConfirm={confirmRoleChange}
-      />
-
-      {/* Delete Confirmation */}
-      <ConfirmModal
-        open={isDeleteModalOpen}
-        onOpenChange={setIsDeleteModalOpen}
-        title="Delete User"
-        description={`Are you sure you want to delete "${selectedUser?.name}"? This action cannot be undone.`}
-        confirmLabel="Delete"
-        variant="destructive"
-        onConfirm={handleDeleteUser}
+        open={isDeleteRoleModalOpen}
+        onOpenChange={setIsDeleteRoleModalOpen}
+        title="Delete Role"
+        description={`Are you sure you want to delete the "${selectedRole?.name}" role? Users assigned to this role may lose access.`}
+        onConfirm={() => selectedRole && deleteRoleMutation.mutate(selectedRole.id)}
       />
     </div>
   );
