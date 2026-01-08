@@ -288,6 +288,7 @@ class MicrosoftGraphService
                 'sites' => $sharePointAccess,
                 'recent_files' => $recentFiles,
             ],
+            'synced_at' => now()->toIso8601String(),
         ];
     }
 

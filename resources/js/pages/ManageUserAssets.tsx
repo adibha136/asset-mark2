@@ -8,7 +8,7 @@ import {
   Activity, Fingerprint, Clock, Globe, FileText, Share2,
   Key, ShieldCheck, Mail, Building2, MapPin, ExternalLink,
   Briefcase, Settings2, History, FileStack, Phone, Trash2,
-  AlertCircle, RefreshCw
+  AlertCircle, RefreshCw, Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,7 +39,7 @@ import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Modal } from "@/components/shared/Modal";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 
 interface DirectoryUser {
   id: string;
@@ -278,33 +278,6 @@ export default function ManageUserAssets() {
                   )}>
                     {user?.account_enabled ? "Active" : "Inactive"}
                   </Badge>
-                  {user?.license_name && user?.license_name !== 'No License' && (
-                    <Badge variant="outline" className="border-blue-500/50 text-blue-600 bg-blue-500/5 font-black text-[10px] uppercase tracking-widest h-6 px-3">
-                      {(() => {
-                        const name = user.license_name;
-                        const skuMap: Record<string, string> = {
-                          'SPB': 'Microsoft 365 Business Premium',
-                          'BUSINESSPREMIUM': 'Microsoft 365 Business Premium',
-                          'O365_BUSINESS_ESSENTIALS': 'Microsoft 365 Business Basic',
-                          'O365_BUSINESS_PREMIUM': 'Microsoft 365 Business Standard',
-                          'STANDARDPACK': 'Microsoft 365 Business Standard',
-                          'BUSINESSBASIC': 'Microsoft 365 Business Basic',
-                          'POWER_BI_STANDARD': 'Power BI Pro',
-                          'POWER_BI_PRO': 'Power BI Pro',
-                        };
-                        const upperName = name.toUpperCase();
-                        if (skuMap[upperName]) return skuMap[upperName];
-                        if (name.includes(',')) {
-                          return name.split(',').map(n => {
-                            const trimmed = n.trim();
-                            const upperTrimmed = trimmed.toUpperCase();
-                            return skuMap[upperTrimmed] || trimmed.replace(/_/g, ' ').replace(/-/g, ' ');
-                          }).join(', ');
-                        }
-                        return name.replace(/_/g, ' ').replace(/-/g, ' ');
-                      })()}
-                    </Badge>
-                  )}
                   {((user?.onboarding_total_questions || 0) > 0) && (
                     <Badge variant="outline" className={cn(
                       "font-black text-[10px] uppercase tracking-widest h-6 px-3",
@@ -322,10 +295,18 @@ export default function ManageUserAssets() {
                     </Badge>
                   )}
                 </div>
-                <p className="text-sm font-bold text-muted-foreground uppercase tracking-[0.2em] flex items-center gap-2">
-                  <Briefcase className="w-4 h-4 text-primary" />
-                  {user?.job_title || "Enterprise Infrastructure Lead"}
-                </p>
+                <div className="flex items-center gap-4">
+                  <p className="text-sm font-bold text-muted-foreground uppercase tracking-[0.2em] flex items-center gap-2">
+                    <Briefcase className="w-4 h-4 text-primary" />
+                    {user?.job_title || "Enterprise Infrastructure Lead"}
+                  </p>
+                  {user?.license_name && user?.license_name !== 'No License' && (
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-500/5 text-blue-600 text-[10px] font-black uppercase tracking-widest border border-blue-500/10 shadow-sm">
+                      <Zap className="w-3 h-3" />
+                      {user.license_name.split(',').length} {user.license_name.split(',').length === 1 ? 'License' : 'Licenses'}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-6">
@@ -386,24 +367,10 @@ export default function ManageUserAssets() {
               </div>
               <div className="w-px h-12 bg-border/60" />
               <div className="text-center space-y-1">
-                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">M365 License</p>
-                <div className="text-sm font-black h-9 flex items-center justify-center text-foreground px-4">
-                  {(() => {
-                    if (!user?.license_name || user?.license_name === 'No License') return "None";
-                    const name = user.license_name;
-                    const skuMap: Record<string, string> = {
-                      'SPB': 'Business Premium',
-                      'BUSINESSPREMIUM': 'Business Premium',
-                      'O365_BUSINESS_ESSENTIALS': 'Business Basic',
-                      'O365_BUSINESS_PREMIUM': 'Business Standard',
-                      'STANDARDPACK': 'Business Standard',
-                      'BUSINESSBASIC': 'Business Basic',
-                    };
-                    const upperName = name.toUpperCase();
-                    if (skuMap[upperName]) return skuMap[upperName];
-                    return name.split(',')[0].replace(/_/g, ' ').replace(/-/g, ' ');
-                  })()}
-                </div>
+                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">M365 Licenses</p>
+                <p className="text-3xl font-black text-foreground tabular-nums">
+                  {user?.license_name && user?.license_name !== 'No License' ? user.license_name.split(',').length : 0}
+                </p>
               </div>
             </div>
           </div>
@@ -554,7 +521,9 @@ export default function ManageUserAssets() {
                   <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Directory & Collaboration Intelligence</p>
                 </div>
               </div>
-              <Badge className="bg-blue-500/10 text-blue-700 border-none font-black text-[10px] uppercase tracking-widest h-8 px-4 rounded-xl">Synced 5m ago</Badge>
+              <Badge className="bg-blue-500/10 text-blue-700 border-none font-black text-[10px] uppercase tracking-widest h-8 px-4 rounded-xl">
+                Synced {activityData?.synced_at ? formatDistanceToNow(new Date(activityData.synced_at), { addSuffix: true }) : 'Recently'}
+              </Badge>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
