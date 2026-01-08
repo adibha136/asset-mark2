@@ -630,11 +630,49 @@ export default function Assets() {
     {
       key: "license",
       header: "M365 License",
-      render: (user: DirectoryUser) => (
-        <Badge variant="outline" className="font-normal">
-          {user.license_name || "No License"}
-        </Badge>
-      )
+      render: (user: DirectoryUser) => {
+        const formatLicense = (name: string) => {
+          if (!name || name === 'No License') return name || "No License";
+          
+          // Dictionary for common SKUs to show full names immediately without re-sync
+          const skuMap: Record<string, string> = {
+            'SPB': 'Microsoft 365 Business Premium',
+            'BUSINESSPREMIUM': 'Microsoft 365 Business Premium',
+            'O365_BUSINESS_ESSENTIALS': 'Microsoft 365 Business Basic',
+            'O365_BUSINESS_PREMIUM': 'Microsoft 365 Business Standard',
+            'STANDARDPACK': 'Microsoft 365 Business Standard',
+            'BUSINESSBASIC': 'Microsoft 365 Business Basic',
+            'POWER_BI_STANDARD': 'Power BI Pro',
+            'POWER_BI_PRO': 'Power BI Pro',
+          };
+
+          const upperName = name.toUpperCase();
+          if (skuMap[upperName]) return skuMap[upperName];
+
+          // If it contains multiple licenses separated by comma
+          if (name.includes(',')) {
+            return name.split(',').map(n => formatLicense(n.trim())).join(', ');
+          }
+
+          // Fallback for unknown SKUs
+          let formatted = name.replace(/_/g, ' ').replace(/-/g, ' ');
+          
+          // Simple heuristic: if it looks like a SKU (all caps with numbers/underscores)
+          if (formatted === formatted.toUpperCase()) {
+            formatted = formatted.toLowerCase().split(' ').map(word => 
+              word.charAt(0).toUpperCase() + word.slice(1)
+            ).join(' ');
+          }
+          
+          return formatted;
+        };
+
+        return (
+          <Badge variant="outline" className="font-normal">
+            {formatLicense(user.license_name || "")}
+          </Badge>
+        );
+      }
     },
     {
       key: "checklists",

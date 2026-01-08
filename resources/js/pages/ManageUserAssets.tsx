@@ -278,6 +278,33 @@ export default function ManageUserAssets() {
                   )}>
                     {user?.account_enabled ? "Active" : "Inactive"}
                   </Badge>
+                  {user?.license_name && user?.license_name !== 'No License' && (
+                    <Badge variant="outline" className="border-blue-500/50 text-blue-600 bg-blue-500/5 font-black text-[10px] uppercase tracking-widest h-6 px-3">
+                      {(() => {
+                        const name = user.license_name;
+                        const skuMap: Record<string, string> = {
+                          'SPB': 'Microsoft 365 Business Premium',
+                          'BUSINESSPREMIUM': 'Microsoft 365 Business Premium',
+                          'O365_BUSINESS_ESSENTIALS': 'Microsoft 365 Business Basic',
+                          'O365_BUSINESS_PREMIUM': 'Microsoft 365 Business Standard',
+                          'STANDARDPACK': 'Microsoft 365 Business Standard',
+                          'BUSINESSBASIC': 'Microsoft 365 Business Basic',
+                          'POWER_BI_STANDARD': 'Power BI Pro',
+                          'POWER_BI_PRO': 'Power BI Pro',
+                        };
+                        const upperName = name.toUpperCase();
+                        if (skuMap[upperName]) return skuMap[upperName];
+                        if (name.includes(',')) {
+                          return name.split(',').map(n => {
+                            const trimmed = n.trim();
+                            const upperTrimmed = trimmed.toUpperCase();
+                            return skuMap[upperTrimmed] || trimmed.replace(/_/g, ' ').replace(/-/g, ' ');
+                          }).join(', ');
+                        }
+                        return name.replace(/_/g, ' ').replace(/-/g, ' ');
+                      })()}
+                    </Badge>
+                  )}
                   {((user?.onboarding_total_questions || 0) > 0) && (
                     <Badge variant="outline" className={cn(
                       "font-black text-[10px] uppercase tracking-widest h-6 px-3",
@@ -359,9 +386,23 @@ export default function ManageUserAssets() {
               </div>
               <div className="w-px h-12 bg-border/60" />
               <div className="text-center space-y-1">
-                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">License</p>
-                <div className="text-3xl font-black tabular-nums h-9 flex items-center justify-center text-foreground">
-                  {user?.license_name && user?.license_name !== 'No License' ? "1" : "0"}
+                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">M365 License</p>
+                <div className="text-sm font-black h-9 flex items-center justify-center text-foreground px-4">
+                  {(() => {
+                    if (!user?.license_name || user?.license_name === 'No License') return "None";
+                    const name = user.license_name;
+                    const skuMap: Record<string, string> = {
+                      'SPB': 'Business Premium',
+                      'BUSINESSPREMIUM': 'Business Premium',
+                      'O365_BUSINESS_ESSENTIALS': 'Business Basic',
+                      'O365_BUSINESS_PREMIUM': 'Business Standard',
+                      'STANDARDPACK': 'Business Standard',
+                      'BUSINESSBASIC': 'Business Basic',
+                    };
+                    const upperName = name.toUpperCase();
+                    if (skuMap[upperName]) return skuMap[upperName];
+                    return name.split(',')[0].replace(/_/g, ' ').replace(/-/g, ' ');
+                  })()}
                 </div>
               </div>
             </div>

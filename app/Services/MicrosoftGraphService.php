@@ -25,18 +25,35 @@ class MicrosoftGraphService
 
     protected function getLicenseDisplayName(string $skuPartNumber): string
     {
-        // ... (truncated dict for brevity, assuming standard list) ...
         $licenseNames = [
             'ENTERPRISEPREMIUM' => 'Microsoft 365 Enterprise Premium',
             'ENTERPRISEPACK' => 'Microsoft 365 Enterprise E3',
             'STANDARDPACK' => 'Microsoft 365 Business Standard',
             'BUSINESSBASIC' => 'Microsoft 365 Business Basic',
             'BUSINESSPREMIUM' => 'Microsoft 365 Business Premium',
+            'O365_BUSINESS_ESSENTIALS' => 'Microsoft 365 Business Basic',
+            'O365_BUSINESS_PREMIUM' => 'Microsoft 365 Business Standard',
+            'SPB' => 'Microsoft 365 Business Premium',
             'FLOW_FREE' => 'Microsoft Power Automate Free',
-            // Add other common ones or huge list if needed, keeping it simple for replacement
+            'POWER_BI_STANDARD' => 'Power BI Pro',
+            'POWER_BI_PRO' => 'Power BI Pro',
+            'PROJECTPROFESSIONAL' => 'Project Plan 3',
+            'VISIOPRO' => 'Visio Plan 2',
+            'EMS' => 'Enterprise Mobility + Security E3',
+            'EMSPREMIUM' => 'Enterprise Mobility + Security E5',
+            'DEVELOPER_PACK' => 'Microsoft 365 E5 Developer',
+            'WIN10_PRO_ENT_SUB' => 'Windows 10/11 Enterprise E3',
         ];
 
-        return $licenseNames[$skuPartNumber] ?? $skuPartNumber;
+        if (isset($licenseNames[$skuPartNumber])) {
+            return $licenseNames[$skuPartNumber];
+        }
+
+        // Fallback for unknown SKUs: clean up the string (e.g., O365_BUSINESS_ESSENTIALS -> O365 Business Essentials)
+        $name = str_replace('_', ' ', $skuPartNumber);
+        $name = str_replace('-', ' ', $name);
+        
+        return ucwords(strtolower($name));
     }
 
     protected function getAccessToken(): ?string
