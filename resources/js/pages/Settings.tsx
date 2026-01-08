@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { 
   Mail, Shield, Bell, Save, Send, RefreshCw, 
-  Cloud, Database, Zap, Clock, Check, X, Settings as SettingsIcon 
+  Cloud, Database, Zap, Clock, Check, X, Settings as SettingsIcon,
+  Terminal, Info, Calendar
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -191,6 +192,10 @@ export default function Settings() {
           <TabsTrigger value="sync" className="gap-2">
             <RefreshCw className="w-4 h-4" />
             Directory Sync
+          </TabsTrigger>
+          <TabsTrigger value="scheduler" className="gap-2">
+            <Terminal className="w-4 h-4" />
+            System Scheduler
           </TabsTrigger>
         </TabsList>
 
@@ -543,6 +548,158 @@ export default function Settings() {
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Shield className="w-4 h-4 text-success" />
                       <span>Secure OAuth 2.0 connection active</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="scheduler" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              <Card className="opacity-0 animate-fade-in">
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Terminal className="w-5 h-5 text-primary" />
+                    <CardTitle>Cron Job Configuration</CardTitle>
+                  </div>
+                  <CardDescription>Configure your server's crontab to automate system tasks</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="p-4 rounded-lg bg-muted font-mono text-sm relative group">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-muted-foreground text-xs uppercase font-sans">Crontab Entry</span>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-6 px-2 text-xs"
+                        onClick={() => {
+                          navigator.clipboard.writeText("* * * * * cd " + window.location.origin.replace(/(^\w+:|^)\/\//, "") + " && php artisan schedule:run >> /dev/null 2>&1");
+                          toast.success("Copied to clipboard");
+                        }}
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                    <code className="block break-all">
+                      * * * * * cd /path/to-your-project &amp;&amp; php artisan schedule:run &gt;&gt; /dev/null 2&gt;&amp;1
+                    </code>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <h4 className="font-semibold flex items-center gap-2 text-sm">
+                      <Info className="w-4 h-4 text-blue-500" />
+                      How it works
+                    </h4>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      Laravel's command scheduler allows you to fluently and expressively define your command schedule within the application itself. 
+                      When using the scheduler, only a single cron entry is needed on your server.
+                    </p>
+                  </div>
+
+                  <div className="pt-4 border-t border-border">
+                    <h4 className="font-semibold text-sm mb-3">Manual Execution</h4>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      To run the scheduled tasks manually for testing, you can use the following artisan command:
+                    </p>
+                    <div className="p-3 rounded-lg bg-muted font-mono text-sm flex justify-between items-center">
+                      <code>php artisan schedule:run</code>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-6 px-2 text-xs"
+                        onClick={() => {
+                          navigator.clipboard.writeText("php artisan schedule:run");
+                          toast.success("Copied to clipboard");
+                        }}
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="opacity-0 animate-fade-in" style={{ animationDelay: "100ms" }}>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-primary" />
+                    <CardTitle>Scheduled Tasks</CardTitle>
+                  </div>
+                  <CardDescription>Current automated tasks defined in the system</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 rounded-xl bg-muted/30">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
+                          <RefreshCw className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">Directory Synchronization</p>
+                          <p className="text-xs text-muted-foreground">sync:directory-users</p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary">Every Minute</Badge>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 rounded-xl bg-muted/30">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-500">
+                          <Shield className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">Warranty Expiry Check</p>
+                          <p className="text-xs text-muted-foreground">notifications:check-warranty</p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary">Daily</Badge>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 rounded-xl bg-muted/30">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-500">
+                          <Bell className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">Inactive User Check</p>
+                          <p className="text-xs text-muted-foreground">notifications:check-inactive</p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary">Hourly</Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="lg:col-span-1">
+              <Card className="bg-primary/5 border-primary/20 opacity-0 animate-fade-in" style={{ animationDelay: "200ms" }}>
+                <CardHeader>
+                  <CardTitle className="text-sm">Quick Setup Guide</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 text-sm">
+                  <div className="space-y-2">
+                    <p className="font-medium">1. Open Crontab</p>
+                    <code className="block p-2 bg-background rounded border text-xs">crontab -e</code>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="font-medium">2. Paste Entry</p>
+                    <p className="text-muted-foreground text-xs leading-relaxed">
+                      Add the crontab entry from the left, ensuring you replace the path with your actual project root.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="font-medium">3. Save and Exit</p>
+                    <p className="text-muted-foreground text-xs">
+                      The scheduler will now start running automatically.
+                    </p>
+                  </div>
+                  <div className="pt-2">
+                    <div className="flex items-start gap-2 p-3 bg-yellow-500/10 rounded-lg text-yellow-600 dark:text-yellow-500 text-xs">
+                      <Info className="w-4 h-4 mt-0.5 shrink-0" />
+                      <p>Ensure your server has PHP installed and the artisan file is executable.</p>
                     </div>
                   </div>
                 </CardContent>

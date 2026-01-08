@@ -1,6 +1,6 @@
 import {
-  AreaChart,
-  Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -43,18 +43,8 @@ export function AnalyticsChart({ data = defaultData }: AnalyticsChartProps) {
       </div>
       <div className="h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data}>
-            <defs>
-              <linearGradient id="colorAssets" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="hsl(221, 83%, 53%)" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="hsl(221, 83%, 53%)" stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="hsl(174, 72%, 40%)" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="hsl(174, 72%, 40%)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(214, 32%, 91%)" />
+          <BarChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(214, 32%, 91%)" vertical={false} />
             <XAxis
               dataKey="name"
               axisLine={false}
@@ -67,6 +57,7 @@ export function AnalyticsChart({ data = defaultData }: AnalyticsChartProps) {
               tick={{ fill: "hsl(215, 16%, 47%)", fontSize: 12 }}
             />
             <Tooltip
+              cursor={{ fill: 'hsl(210, 40%, 96%)' }}
               contentStyle={{
                 backgroundColor: "hsl(0, 0%, 100%)",
                 border: "1px solid hsl(214, 32%, 91%)",
@@ -74,23 +65,19 @@ export function AnalyticsChart({ data = defaultData }: AnalyticsChartProps) {
                 boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
               }}
             />
-            <Area
-              type="monotone"
+            <Bar
               dataKey="assets"
-              stroke="hsl(221, 83%, 53%)"
-              strokeWidth={2}
-              fillOpacity={1}
-              fill="url(#colorAssets)"
+              fill="hsl(221, 83%, 53%)"
+              radius={[4, 4, 0, 0]}
+              barSize={20}
             />
-            <Area
-              type="monotone"
+            <Bar
               dataKey="users"
-              stroke="hsl(174, 72%, 40%)"
-              strokeWidth={2}
-              fillOpacity={1}
-              fill="url(#colorUsers)"
+              fill="hsl(174, 72%, 40%)"
+              radius={[4, 4, 0, 0]}
+              barSize={20}
             />
-          </AreaChart>
+          </BarChart>
         </ResponsiveContainer>
       </div>
     </div>
