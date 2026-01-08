@@ -1,0 +1,906 @@
+<?php
+
+use App\Http\Controllers\ChecklistController;
+use App\Http\Controllers\MailSettingController;
+use App\Jobs\FetchUserPhoto;
+use App\Jobs\SyncTenantDirectory;
+use App\Models\Asset;
+use App\Models\AssetAssignment;
+use App\Models\DirectoryUser;
+use App\Models\SyncLog;
+use App\Models\SyncSetting;
+use App\Models\Tenant;
+use App\Models\User;
+use App\Services\MicrosoftGraphService;
+use App\Services\NotificationService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+
+Route::prefix('api')->group(function () {
+    Route::get('/mail-settings', [MailSettingController::class, 'index']);
+    Route::post('/mail-settings', [MailSettingController::class, 'update']);
+    Route::post('/mail-settings/test', [MailSettingController::class, 'test']);
+
+    Route::get('/checklist-templates', [ChecklistController::class, 'index']);
+    Route::post('/checklist-templates', [ChecklistController::class, 'store']);
+    Route::put('/checklist-templates/{template}', [ChecklistController::class, 'update']);
+    Route::delete('/checklist-templates/{template}', [ChecklistController::class, 'destroy']);
+
+    Route::get('/checklist-assignments', [ChecklistController::class, 'getAssignments']);
+    Route::post('/checklist-assignments', [ChecklistController::class, 'assignTemplate']);
+    Route::delete('/checklist-assignments/{id}', [ChecklistController::class, 'destroyAssignment']);
+
+    Route::get('/checklist-submissions', [ChecklistController::class, 'getSubmission']);
+    Route::post('/checklist-submissions/answer', [ChecklistController::class, 'submitAnswer']);
+
+    Route::post('/login', function (Request $request) {
+    $credentials = $request->validate([
+        'email' => 'required|email',
+        'password' => 'required',
+    ]);
+
+    Log::info('Login attempt for: '.$credentials['email']);
+
+    // Ensure admin user exists for testing if not already seeded
+    if ($credentials['email'] === 'admin@assetflow.com' && ! User::where('email', 'admin@assetflow.com')->exists()) {
+        User::create([
+            'name' => 'Admin User',
+            'email' => 'admin@assetflow.com',
+            'password' => Hash::make('password'),
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        Log::info('Created missing admin@assetflow.com user');
+    }
+
+    if (Auth::attempt($credentials)) {
+        $user = Auth::user();
+        Log::info('User logged in successfully: '.$user->email);
+
+        return response()->json([
+            'user' => [
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role ?? 'User',
+                'avatar' => $user->avatar ?? 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face',
+            ],
+            'token' => 'dummy-token-for-testing',
+        ]);
+    }
+
+    Log::warning('Failed login attempt for: '.$credentials['email']);
+
+    return response()->json(['message' => 'Invalid credentials'], 401);
+});
+
+Route::get('/dashboard/stats', function () {
+    $totalAssetsCount = Asset::count();
+    $activeTenantsCount = Tenant::where('status', 'active')->count();
+    $totalUsersCount = DirectoryUser::count();
+    $lastSync = SyncLog::latest()->first();
+
+    // Mock growth data - in a real app this would be grouped by month
+    $growthData = [
+        ['name' => 'Jan', 'assets' => 120, 'users' => 45],
+        ['name' => 'Feb', 'assets' => 150, 'users' => 52],
+        ['name' => 'Mar', 'assets' => 180, 'users' => 58],
+        ['name' => 'Apr', 'assets' => 220, 'users' => 65],
+        ['name' => 'May', 'assets' => 280, 'users' => 78],
+        ['name' => 'Jun', 'assets' => 340, 'users' => 85],
+        ['name' => 'Jul', 'assets' => $totalAssetsCount, 'users' => $totalUsersCount],
+    ];
+
+    // Get recent activities
+    $recentAssets = Asset::latest()->take(2)->get()->map(function ($asset) {
+        return [
+            'id' => 'asset-'.$asset->id,
+            'type' => 'asset',
+            'title' => 'New asset registered',
+            'description' => $asset->name.' added to inventory',
+            'time' => $asset->created_at->diffForHumans(),
+            'color' => 'text-primary bg-primary/10',
+        ];
+    });
+
+    $recentTenants = Tenant::latest()->take(1)->get()->map(function ($tenant) {
+        return [
+            'id' => 'tenant-'.$tenant->id,
+            'type' => 'tenant',
+            'title' => 'New tenant onboarded',
+            'description' => $tenant->name.' joined the platform',
+            'time' => $tenant->created_at->diffForHumans(),
+            'color' => 'text-warning bg-warning/10',
+        ];
+    });
+
+    $recentSyncs = SyncLog::latest()->take(2)->get()->map(function ($log) {
+        return [
+            'id' => 'sync-'.$log->id,
+            'type' => 'sync',
+            'title' => 'Directory sync completed',
+            'description' => $log->records_synced.' records synchronized from '.$log->source,
+            'time' => $log->created_at->diffForHumans(),
+            'color' => 'text-success bg-success/10',
+        ];
+    });
+
+    $activities = $recentAssets->concat($recentTenants)->concat($recentSyncs)->sortByDesc('time')->values()->take(5);
+
+    return response()->json([
+        'totalAssets' => [
+            'value' => number_format($totalAssetsCount),
+            'change' => '+12.5%',
+            'changeType' => 'positive',
+        ],
+        'activeTenants' => [
+            'value' => (string) $activeTenantsCount,
+            'change' => '+2',
+            'changeType' => 'positive',
+        ],
+        'totalUsers' => [
+            'value' => number_format($totalUsersCount),
+            'change' => '+18%',
+            'changeType' => 'positive',
+        ],
+        'syncStatus' => [
+            'value' => $lastSync ? ($lastSync->status === 'success' ? 'Healthy' : 'Issues') : 'Never',
+            'change' => $lastSync ? 'Last sync: '.$lastSync->created_at->diffForHumans() : 'No sync logs',
+            'changeType' => $lastSync && $lastSync->status === 'success' ? 'positive' : 'neutral',
+        ],
+        'growthData' => $growthData,
+        'activities' => $activities,
+    ]);
+});
+
+Route::get('/tenants', function () {
+    return response()->json(Tenant::withCount([
+        'directoryUsers as total_users_count',
+        'assets as assigned_assets_count' => function ($query) {
+            $query->where('status', 'assigned');
+        },
+    ])->get());
+});
+
+Route::get('/tenants/{id}', function ($id) {
+    $tenant = Tenant::findOrFail($id);
+
+    return response()->json($tenant);
+});
+
+Route::get('/tenants/{id}/users', function ($id) {
+    $tenant = Tenant::findOrFail($id);
+
+    // Step 1: Return cached users immediately
+    $users = DirectoryUser::where('tenant_id', $tenant->id)->get();
+
+    // Step 2: Trigger background sync if needed (e.g. if we have credentials)
+    if ($tenant->fetch_from_graph && $tenant->azure_tenant_id && $tenant->client_id) {
+        SyncTenantDirectory::dispatch($tenant->id);
+    }
+
+    return response()->json($users);
+});
+
+Route::get('/tenants/user-photo', function (Request $request) {
+    $userId = $request->query('user_id');
+    $tenantId = $request->query('tenant_id');
+    $name = $request->query('name');
+
+    if (! $userId || ! $tenantId) {
+        return redirect('https://ui-avatars.com/api/?name='.urlencode($name).'&background=random');
+    }
+
+    // Check if we have the photo locally
+    $path = "public/photos/{$tenantId}/{$userId}.jpg";
+
+    if (Storage::exists($path)) {
+        return response(Storage::get($path))
+            ->header('Content-Type', 'image/jpeg')
+            ->header('Cache-Control', 'public, max-age=604800') // 1 week cache
+            ->header('Expires', gmdate('D, d M Y H:i:s T', time() + 604800));
+    }
+
+    // If not, dispatch job to fetch it
+    // We check tenant existence briefly to avoid queueing for invalid tenant IDs
+    // but actual fetching happens in the job
+    $tenant = Tenant::where('azure_tenant_id', $tenantId)->first();
+    if ($tenant && $tenant->client_id && $tenant->client_secret) {
+        FetchUserPhoto::dispatch($tenantId, $userId);
+    }
+
+    // Return default avatar immediately
+    return redirect('https://ui-avatars.com/api/?name='.urlencode($name).'&background=random');
+});
+
+Route::get('/assets', function () {
+    return response()->json([
+        ['id' => '1', 'name' => 'MacBook Pro 16"', 'type' => 'Laptop', 'status' => 'active', 'location' => 'Office A', 'assignedTo' => 'John Doe', 'serialNumber' => 'MBP-2024-001'],
+        ['id' => '2', 'name' => 'Dell Monitor 27"', 'type' => 'Monitor', 'status' => 'active', 'location' => 'Office A', 'assignedTo' => 'Jane Smith', 'serialNumber' => 'DM-2024-002'],
+        ['id' => '3', 'name' => 'iPhone 15 Pro', 'type' => 'Mobile', 'status' => 'active', 'location' => 'Remote', 'assignedTo' => 'Mike Johnson', 'serialNumber' => 'IP-2024-003'],
+        ['id' => '4', 'name' => 'Logitech MX Master', 'type' => 'Peripheral', 'status' => 'inactive', 'location' => 'Storage', 'assignedTo' => 'Unassigned', 'serialNumber' => 'LMX-2024-004'],
+        ['id' => '5', 'name' => 'HP LaserJet Pro', 'type' => 'Printer', 'status' => 'maintenance', 'location' => 'Office B', 'assignedTo' => 'IT Dept', 'serialNumber' => 'HP-2024-005'],
+        ['id' => '6', 'name' => 'ThinkPad X1 Carbon', 'type' => 'Laptop', 'status' => 'active', 'location' => 'Remote', 'assignedTo' => 'Sarah Wilson', 'serialNumber' => 'TP-2024-006'],
+    ]);
+});
+
+Route::get('/assets/{id}', function ($id) {
+    $assets = [
+        ['id' => '1', 'name' => 'MacBook Pro 16"', 'type' => 'Laptop', 'status' => 'active', 'location' => 'Office A', 'assignedTo' => 'John Doe', 'serialNumber' => 'MBP-2024-001', 'purchaseDate' => '2023-11-15', 'warranty' => '2025-11-15', 'description' => 'M3 Max, 64GB RAM, 2TB SSD'],
+        ['id' => '2', 'name' => 'Dell Monitor 27"', 'type' => 'Monitor', 'status' => 'active', 'location' => 'Office A', 'assignedTo' => 'Jane Smith', 'serialNumber' => 'DM-2024-002', 'purchaseDate' => '2023-10-20', 'warranty' => '2026-10-20', 'description' => '4K UHD UltraSharp'],
+        ['id' => '3', 'name' => 'iPhone 15 Pro', 'type' => 'Mobile', 'status' => 'active', 'location' => 'Remote', 'assignedTo' => 'Mike Johnson', 'serialNumber' => 'IP-2024-003', 'purchaseDate' => '2024-01-05', 'warranty' => '2025-01-05', 'description' => 'Titanium, 256GB'],
+    ];
+
+    foreach ($assets as $asset) {
+        if ($asset['id'] == $id) {
+            return response()->json($asset);
+        }
+    }
+
+    return response()->json(['message' => 'Asset not found'], 404);
+});
+
+Route::post('/tenants', function (Request $request) {
+    Log::info('Tenant creation request:', $request->all());
+
+    $data = $request->all();
+
+    // Fallback for cases where request is malformed but contains data in keys
+    if (! $request->has('name')) {
+        foreach ($data as $key => $value) {
+            if (str_contains($key, 'name')) {
+                $decoded = json_decode('{'.$key.(is_null($value) ? '' : ':'.$value).'}', true);
+                if ($decoded && isset($decoded['name'])) {
+                    $request->merge($decoded);
+                    break;
+                }
+            }
+        }
+    }
+
+    if (! $request->input('name') && ! $request->input('azure_tenant_id')) {
+        return response()->json(['error' => 'Name or Azure Tenant ID is required', 'received' => $request->all()], 422);
+    }
+
+    $name = $request->input('name');
+    $domain = $request->input('domain');
+    $licenseName = $request->input('license_name');
+    $licenseCount = (int) $request->input('license_count', 0);
+    $usersCount = 0;
+    $assetsCount = 0;
+
+    $isManual = $request->has('is_manual') ? filter_var($request->input('is_manual'), FILTER_VALIDATE_BOOLEAN) : true;
+    $fetchFromGraph = filter_var($request->input('fetch_from_graph'), FILTER_VALIDATE_BOOLEAN);
+
+    if ($tenantId && $clientId && $clientSecret && $fetchFromGraph) {
+        try {
+            $graphService = new MicrosoftGraphService($tenantId, $clientId, $clientSecret);
+            $details = $graphService->getAllDetails();
+
+            if ($details['name']) {
+                // If it's not manual, we prioritize Graph data
+                if (! $isManual) {
+                    $name = $details['name'];
+                    $domain = $details['domain'] ?? $domain;
+                } else {
+                    $name = $name ?: $details['name'];
+                    $domain = $domain ?: $details['domain'];
+                }
+
+                $licenseName = $licenseName ?: $details['license_name'];
+                $licenseCount = $licenseCount ?: $details['license_count'];
+                $usersCount = $details['users_count'];
+                $assetsCount = $details['assets_count'];
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch from Graph API during creation: '.$e->getMessage());
+        }
+    }
+
+    if (! $name && $tenantId) {
+        $name = 'Tenant '.substr($tenantId, 0, 8);
+    }
+
+    $tenant = Tenant::create([
+        'name' => $name,
+        'domain' => $domain,
+        'status' => 'active',
+        'is_manual' => $isManual,
+        'fetch_from_graph' => $fetchFromGraph,
+        'auto_directory_sync' => filter_var($request->input('auto_directory_sync'), FILTER_VALIDATE_BOOLEAN),
+        'redirect_url' => $request->input('redirect_url'),
+        'azure_tenant_id' => $tenantId,
+        'client_id' => $clientId,
+        'client_secret' => $clientSecret,
+        'description' => $request->input('description'),
+        'license_name' => $licenseName,
+        'license_count' => $licenseCount,
+        'usersCount' => $usersCount,
+        'assetsCount' => $assetsCount,
+    ]);
+
+    if ($tenant->fetch_from_graph) {
+        // Run sync in background
+        SyncTenantDirectory::dispatch($tenant->id);
+    }
+
+    return response()->json($tenant, 201);
+});
+
+Route::put('/tenants/{id}', function (Request $request, $id) {
+    $tenant = Tenant::findOrFail($id);
+
+    $updateData = [
+        'name' => $request->input('name', $tenant->name),
+        'domain' => $request->input('domain', $tenant->domain),
+        'status' => $request->input('status', $tenant->status),
+        'is_manual' => $request->has('is_manual') ? filter_var($request->input('is_manual'), FILTER_VALIDATE_BOOLEAN) : $tenant->is_manual,
+        'fetch_from_graph' => $request->has('fetch_from_graph') ? filter_var($request->input('fetch_from_graph'), FILTER_VALIDATE_BOOLEAN) : $tenant->fetch_from_graph,
+        'auto_directory_sync' => $request->has('auto_directory_sync') ? filter_var($request->input('auto_directory_sync'), FILTER_VALIDATE_BOOLEAN) : $tenant->auto_directory_sync,
+        'redirect_url' => $request->input('redirect_url', $tenant->redirect_url),
+        'azure_tenant_id' => $request->input('azure_tenant_id', $tenant->azure_tenant_id),
+        'client_id' => $request->input('client_id', $tenant->client_id),
+        'client_secret' => $request->input('client_secret', $tenant->client_secret),
+        'description' => $request->input('description', $tenant->description),
+        'license_name' => $request->input('license_name', $tenant->license_name),
+        'license_count' => $request->has('license_count') ? (int) $request->input('license_count') : $tenant->license_count,
+    ];
+
+    if ($updateData['fetch_from_graph'] && $updateData['azure_tenant_id'] && $updateData['client_id'] && $updateData['client_secret']) {
+        // Fetch fresh data if "refresh" is passed, if credentials changed, or if it was manual before
+        if ($request->has('refresh') ||
+            $tenant->azure_tenant_id !== $updateData['azure_tenant_id'] ||
+            $tenant->client_id !== $updateData['client_id'] ||
+            $tenant->client_secret !== $updateData['client_secret'] ||
+            $tenant->is_manual) {
+
+            try {
+                $graphService = new MicrosoftGraphService($updateData['azure_tenant_id'], $updateData['client_id'], $updateData['client_secret']);
+                $details = $graphService->getAllDetails();
+
+                if ($details['name']) {
+                    $updateData['name'] = $request->input('name') ?: $details['name'];
+                    $updateData['domain'] = $request->input('domain') ?: $details['domain'];
+                    $updateData['license_name'] = $request->input('license_name') ?: $details['license_name'];
+                    $updateData['license_count'] = (int) $request->input('license_count') ?: $details['license_count'];
+                    $updateData['usersCount'] = $details['users_count'];
+                    $updateData['assetsCount'] = $details['assets_count'];
+                }
+            } catch (\Exception $e) {
+                Log::error('Failed to update from Graph API: '.$e->getMessage());
+            }
+        }
+    }
+
+    $tenant->update($updateData);
+
+    if ($tenant->auto_directory_sync && $tenant->fetch_from_graph) {
+        SyncTenantDirectory::dispatch($tenant->id);
+    }
+
+    return response()->json($tenant);
+});
+
+Route::delete('/tenants/{id}', function ($id) {
+    Tenant::destroy($id);
+
+    return response()->json(null, 204);
+});
+
+Route::get('/users', function (Request $request) {
+    $query = User::query();
+
+    if ($request->has('search')) {
+        $search = $request->search;
+        $query->where(function ($q) use ($search) {
+            $q->where('name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%");
+        });
+    }
+
+    return response()->json($query->get()->map(function ($user) {
+        return [
+            'id' => (string) $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'phone' => $user->phone ?? 'Not provided',
+            'role' => $user->role ?? 'user',
+            'status' => $user->status ?? 'active',
+            'lastActive' => 'Now',
+            'avatar' => $user->avatar ?? 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face',
+        ];
+    }));
+});
+
+Route::post('/users', function (Request $request) {
+    $request->validate([
+        'name' => 'required',
+        'email' => 'required|email|unique:users',
+        'password' => 'required|min:8',
+        'role' => 'sometimes|string',
+        'status' => 'sometimes|string',
+        'phone' => 'sometimes|string',
+    ]);
+
+    $user = User::create([
+        'name' => $request->name,
+        'email' => $request->email,
+        'password' => Hash::make($request->password),
+        'role' => $request->role ?? 'user',
+        'status' => $request->status ?? 'active',
+        'phone' => $request->phone,
+        'avatar' => 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face',
+    ]);
+
+    return response()->json($user, 201);
+});
+
+Route::put('/users/{id}', function (Request $request, $id) {
+    $user = User::findOrFail($id);
+
+    $user->update($request->only(['name', 'email', 'role', 'status', 'phone']));
+
+    if ($request->has('password')) {
+        $user->update(['password' => Hash::make($request->password)]);
+    }
+
+    return response()->json($user);
+});
+
+Route::delete('/users/{id}', function ($id) {
+    User::destroy($id);
+
+    return response()->json(null, 204);
+});
+
+Route::get('/sync/stats', function () {
+    $lastSync = SyncLog::orderBy('created_at', 'desc')->first();
+    $totalSynced = SyncLog::sum('records_synced');
+
+    return response()->json([
+        'totalSynced' => number_format($totalSynced),
+        'lastSync' => $lastSync ? $lastSync->created_at->diffForHumans() : 'Never',
+        'syncRate' => '98.5%', // Mock value
+        'isConnected' => true,
+    ]);
+});
+
+Route::get('/sync/logs', function () {
+    return response()->json(SyncLog::orderBy('created_at', 'desc')->take(10)->get()->map(function ($log) {
+        return [
+            'id' => (string) $log->id,
+            'timestamp' => $log->created_at->format('Y-m-d H:i:s'),
+            'status' => $log->status,
+            'recordsSynced' => $log->records_synced,
+            'duration' => $log->duration,
+            'source' => $log->source,
+        ];
+    }));
+});
+
+Route::post('/sync/run', function () {
+    Log::info('Sync triggered manually');
+
+    // Simulate a sync process
+    $duration = rand(60, 180); // seconds
+    $recordsSynced = rand(100, 300);
+
+    $log = SyncLog::create([
+        'status' => 'success',
+        'records_synced' => $recordsSynced,
+        'duration' => floor($duration / 60).'m '.($duration % 60).'s',
+        'source' => 'Azure AD',
+    ]);
+
+    return response()->json($log);
+});
+
+Route::get('/sync/settings', function () {
+    $settings = SyncSetting::all()->pluck('value', 'key');
+
+    return response()->json([
+        'autoSyncEnabled' => filter_var($settings->get('auto_sync_enabled', 'true'), FILTER_VALIDATE_BOOLEAN),
+        'syncInterval' => $settings->get('sync_interval', '1'),
+        'fetchFromGraph' => filter_var($settings->get('fetch_from_graph', 'true'), FILTER_VALIDATE_BOOLEAN),
+    ]);
+});
+
+Route::post('/sync/settings', function (Request $request) {
+    $settings = $request->only(['autoSyncEnabled', 'syncInterval', 'fetchFromGraph']);
+
+    foreach ($settings as $key => $value) {
+        SyncSetting::updateOrCreate(
+            ['key' => Str::snake($key)],
+            ['value' => is_bool($value) ? ($value ? 'true' : 'false') : $value]
+        );
+    }
+
+    return response()->json(['message' => 'Settings updated successfully']);
+});
+
+Route::post('/tenants/{id}/sync-directory', function ($id) {
+    $tenant = Tenant::findOrFail($id);
+
+    if (! $tenant->fetch_from_graph || ! $tenant->azure_tenant_id || ! $tenant->client_id || ! $tenant->client_secret) {
+        return response()->json(['error' => 'Graph API not enabled'], 400);
+    }
+
+    try {
+        // Enable auto-sync if it's not already enabled, as per user requirement
+        if (! $tenant->auto_directory_sync) {
+            $tenant->update(['auto_directory_sync' => true]);
+        }
+
+        SyncTenantDirectory::dispatch($tenant->id);
+
+        return response()->json(['message' => 'Directory sync started in background', 'auto_sync' => true]);
+    } catch (\Exception $e) {
+        Log::error('Directory sync error: '.$e->getMessage());
+
+        return response()->json(['error' => 'Sync failed: '.$e->getMessage()], 500);
+    }
+});
+
+Route::post('/tenants/{id}/auto-sync', function (Request $request, $id) {
+    $tenant = Tenant::findOrFail($id);
+
+    $validated = $request->validate([
+        'auto_directory_sync' => 'required|boolean',
+    ]);
+
+    $tenant->update($validated);
+
+    // If enabled, trigger a sync immediately
+    if ($tenant->auto_directory_sync && $tenant->fetch_from_graph) {
+        SyncTenantDirectory::dispatch($tenant->id);
+    }
+
+    return response()->json([
+        'message' => 'Auto-sync '.($validated['auto_directory_sync'] ? 'enabled' : 'disabled'),
+        'auto_directory_sync' => $validated['auto_directory_sync'],
+        'last_sync_at' => $tenant->last_sync_at,
+    ]);
+});
+
+Route::get('/tenants/{id}/directory-users', function ($id, \App\Services\ChecklistService $checklistService) {
+    $tenant = Tenant::findOrFail($id);
+
+    $users = DirectoryUser::where('tenant_id', $tenant->id)
+        ->with([
+            'assets',
+            'checklistSubmissions.assignment.template.questions',
+            'checklistSubmissions.answers',
+        ])
+        ->get();
+
+    // Ensure submissions exist for each user before calculating counts
+    foreach ($users as $user) {
+        $checklistService->ensureSubmissions($user);
+    }
+
+    // Refresh relations if they were updated by ensureSubmissions
+    $users->load([
+        'checklistSubmissions.assignment.template.questions',
+        'checklistSubmissions.answers',
+    ]);
+
+    return response()->json($users->map(function ($user) use ($checklistService) {
+        $counts = $checklistService->getQuestionCounts($user);
+
+        // Explicitly cast to array to ensure all dynamic properties are included in JSON
+        $userData = $user->toArray();
+        
+        return array_merge($userData, $counts);
+    }));
+});
+
+Route::post('/tenants/{id}/assets', function (Request $request, $id) {
+    $tenant = Tenant::findOrFail($id);
+
+    $validated = $request->validate([
+        'name' => 'required|string',
+        'type' => 'required|string',
+        'serial_number' => 'nullable|string',
+        'warranty_expiry' => 'nullable|date',
+        'license_expiry' => 'nullable|date',
+        'description' => 'nullable|string',
+    ]);
+
+    $asset = Asset::create([
+        'tenant_id' => $tenant->id,
+        ...$validated,
+        'status' => 'available',
+    ]);
+
+    return response()->json($asset, 201);
+});
+
+Route::get('/tenants/{id}/assets', function ($id, \App\Services\ChecklistService $checklistService) {
+    $tenant = Tenant::findOrFail($id);
+
+    $assets = Asset::where('tenant_id', $tenant->id)
+        ->with([
+            'assignedUsers.checklistSubmissions.assignment.template.questions',
+            'assignedUsers.checklistSubmissions.answers',
+        ])
+        ->get();
+
+    foreach ($assets as $asset) {
+        foreach ($asset->assignedUsers as $user) {
+            $checklistService->ensureSubmissions($user);
+            
+            // Re-load relations for the user after ensureSubmissions
+            $user->load([
+                'checklistSubmissions.assignment.template.questions',
+                'checklistSubmissions.answers',
+            ]);
+
+            $counts = $checklistService->getQuestionCounts($user);
+
+            // Flatten for API response
+            foreach ($counts as $key => $value) {
+                $user->$key = $value;
+            }
+
+            // Cleanup relations to keep payload small
+            unset($user->checklistSubmissions);
+        }
+    }
+
+    return response()->json($assets);
+});
+
+Route::delete('/tenants/{tenantId}/assets/{assetId}', function ($tenantId, $assetId) {
+    $tenant = Tenant::findOrFail($tenantId);
+    $asset = Asset::where('tenant_id', $tenant->id)->findOrFail($assetId);
+
+    // Delete associated assignments first
+    AssetAssignment::where('asset_id', $asset->id)->delete();
+
+    $asset->delete();
+
+    return response()->json(null, 204);
+});
+
+Route::post('/tenants/{id}/assign-asset', function (Request $request, $id) {
+    $tenant = Tenant::findOrFail($id);
+
+    $validated = $request->validate([
+        'user_id' => 'required|uuid|exists:directory_users,id',
+        'asset_id' => 'required|uuid|exists:assets,id',
+    ]);
+
+    $user = DirectoryUser::where('tenant_id', $tenant->id)->findOrFail($validated['user_id']);
+    $asset = Asset::where('tenant_id', $tenant->id)->findOrFail($validated['asset_id']);
+
+    $assignment = AssetAssignment::create([
+        'asset_id' => $asset->id,
+        'user_id' => $user->id,
+        'tenant_id' => $tenant->id,
+        'assigned_at' => now(),
+    ]);
+
+    NotificationService::sendAssetAssignedNotification($user, $asset);
+
+    return response()->json($assignment, 201);
+});
+
+Route::get('/directory-users/{id}/assets', function ($id, \App\Services\ChecklistService $checklistService) {
+    $user = DirectoryUser::with([
+        'assets',
+        'checklistSubmissions.assignment.template.questions',
+        'checklistSubmissions.answers',
+    ])->findOrFail($id);
+
+    $checklistService->ensureSubmissions($user);
+    $user->load([
+        'checklistSubmissions.assignment.template.questions',
+        'checklistSubmissions.answers',
+    ]);
+
+    $counts = $checklistService->getQuestionCounts($user);
+    $userData = array_merge($user->toArray(), $counts);
+
+    return response()->json([
+        'user' => $userData,
+        'assigned_assets' => $user->assets,
+        'm365_license' => $user->license_name,
+    ]);
+});
+
+Route::post('/directory-users/{id}/sync', function ($id) {
+    $user = DirectoryUser::findOrFail($id);
+    $tenant = Tenant::findOrFail($user->tenant_id);
+
+    if (! $tenant->azure_tenant_id || ! $tenant->client_id || ! $tenant->client_secret || ! $user->azure_id) {
+        return response()->json(['error' => 'Graph API not configured for this user'], 400);
+    }
+
+    try {
+        $graphService = new MicrosoftGraphService($tenant->azure_tenant_id, $tenant->client_id, $tenant->client_secret);
+        $graphUser = $graphService->getUser($user->azure_id);
+
+        if ($graphUser) {
+            $user->update([
+                'name' => $graphUser['name'],
+                'email' => $graphUser['email'],
+                'phone' => $graphUser['phone'] ?? null,
+                'mobile_phone' => $graphUser['mobile_phone'] ?? null,
+                'department' => $graphUser['department'] ?? null,
+                'office_location' => $graphUser['office_location'] ?? null,
+                'job_title' => $graphUser['job_title'] ?? null,
+                'license_name' => $graphUser['license_name'] ?? 'No License',
+                'account_enabled' => $graphUser['status'] === 'active' ? true : false,
+                'profile_pic_url' => $graphUser['avatar'] ?? null,
+            ]);
+
+            return response()->json(['message' => 'User synced successfully', 'user' => $user]);
+        }
+
+        return response()->json(['error' => 'User not found in Graph API'], 404);
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+});
+
+Route::get('/directory-users/{userId}/activity', function ($userId) {
+    $user = DirectoryUser::findOrFail($userId);
+    $tenant = Tenant::findOrFail($user->tenant_id);
+
+    if (! $tenant->azure_tenant_id || ! $tenant->client_id || ! $tenant->client_secret || ! $user->azure_id) {
+        return response()->json([
+            'activity' => [],
+            'app_access' => [],
+            'signals' => [
+                'mfa_enabled' => false,
+                'is_compliant' => false,
+                'risk_level' => 'hidden',
+                'risk_score' => $user->azure_id ? 0 : 10.0, // Give perfect score if no ID to hide error
+            ],
+        ]);
+    }
+
+    $graphService = new MicrosoftGraphService($tenant->azure_tenant_id, $tenant->client_id, $tenant->client_secret);
+
+    // Use the cached batch method for performance
+    return response()->json($graphService->getUserFullProfileCached($user->azure_id));
+});
+
+Route::post('/tenants/{id}/quick-assign', function (Request $request, $id) {
+    $tenant = Tenant::findOrFail($id);
+
+    $validated = $request->validate([
+        'user_id' => 'required|uuid|exists:directory_users,id',
+        'name' => 'required|string',
+        'type' => 'required|string',
+        'serial_number' => 'nullable|string',
+        'warranty_expiry' => 'nullable|date',
+        'license_expiry' => 'nullable|date',
+        'description' => 'nullable|string',
+    ]);
+
+    // 1. Create the asset
+    $asset = Asset::create([
+        'tenant_id' => $tenant->id,
+        'name' => $validated['name'],
+        'type' => $validated['type'],
+        'serial_number' => $validated['serial_number'] ?? null,
+        'warranty_expiry' => $validated['warranty_expiry'] ?? null,
+        'license_expiry' => $validated['license_expiry'] ?? null,
+        'description' => $validated['description'] ?? null,
+        'status' => 'assigned',
+    ]);
+
+    // 2. Assign it
+    AssetAssignment::create([
+        'asset_id' => $asset->id,
+        'user_id' => $validated['user_id'],
+        'tenant_id' => $tenant->id,
+        'assigned_at' => now(),
+    ]);
+
+    $assignedUser = DirectoryUser::find($validated['user_id']);
+    NotificationService::sendAssetAssignedNotification($assignedUser, $asset);
+
+    return response()->json($asset, 201);
+});
+
+Route::post('/tenants/{id}/transfer-asset', function (Request $request, $id) {
+    $tenant = Tenant::findOrFail($id);
+
+    $validated = $request->validate([
+        'asset_id' => 'required|uuid|exists:assets,id',
+        'from_user_id' => 'nullable|uuid|exists:directory_users,id',
+        'to_user_id' => 'required|uuid|exists:directory_users,id',
+    ]);
+
+    $asset = Asset::where('tenant_id', $tenant->id)->findOrFail($validated['asset_id']);
+
+    // 1. Unassign current user(s)
+    AssetAssignment::where('asset_id', $asset->id)
+        ->whereNull('unassigned_at')
+        ->update(['unassigned_at' => now()]);
+
+    // 2. Assign to new user
+    $assignment = AssetAssignment::create([
+        'asset_id' => $asset->id,
+        'user_id' => $validated['to_user_id'],
+        'tenant_id' => $tenant->id,
+        'assigned_at' => now(),
+    ]);
+
+    $toUser = DirectoryUser::find($validated['to_user_id']);
+    NotificationService::sendAssetAssignedNotification($toUser, $asset);
+
+    // Ensure status is assigned
+    $asset->update(['status' => 'assigned']);
+
+    return response()->json($assignment, 201);
+});
+
+Route::post('/tenants/{id}/unassign-asset', function (Request $request, $id) {
+    $tenant = Tenant::findOrFail($id);
+
+    $validated = $request->validate([
+        'asset_id' => 'required|uuid|exists:assets,id',
+    ]);
+
+    $asset = Asset::where('tenant_id', $tenant->id)->findOrFail($validated['asset_id']);
+
+    // 1. Mark current assignments as completed
+    AssetAssignment::where('asset_id', $asset->id)
+        ->whereNull('unassigned_at')
+        ->update(['unassigned_at' => now()]);
+
+    // 2. Set asset status back to available
+    $asset->update(['status' => 'available']);
+
+    return response()->json(['message' => 'Asset unassigned successfully']);
+});
+
+Route::get('/tenants/{id}/stats', function ($id) {
+    $tenant = Tenant::findOrFail($id);
+    $assetCount = Asset::where('tenant_id', $id)->count();
+    $activeUsers = DirectoryUser::where('tenant_id', $id)->where('account_enabled', true)->count();
+    $inactiveUsers = DirectoryUser::where('tenant_id', $id)->where('account_enabled', false)->count();
+
+    // Calculate used and free licenses
+    $usedLicenses = DirectoryUser::where('tenant_id', $id)
+        ->whereNotNull('license_name')
+        ->where('license_name', '!=', 'No License')
+        ->count();
+
+    $totalLicenses = $tenant->license_count ?? 0;
+    $freeLicenses = max(0, $totalLicenses - $usedLicenses);
+
+    $noLicenseCount = DirectoryUser::where('tenant_id', $id)
+        ->where(function ($q) {
+            $q->whereNull('license_name')
+                ->orWhere('license_name', 'No License');
+        })
+        ->count();
+
+    // Mock license cost calculation (assuming $20 per license)
+    $licensePrice = 20.00;
+    $totalLicenseCost = $totalLicenses * $licensePrice;
+
+    return response()->json([
+        'total_licenses' => $totalLicenses,
+        'used_licenses' => $usedLicenses,
+        'free_licenses' => $freeLicenses,
+        'no_license_count' => $noLicenseCount,
+        'total_license_cost' => $totalLicenseCost,
+        'asset_count' => $assetCount,
+        'active_users' => $activeUsers,
+        'inactive_users' => $inactiveUsers,
+    ]);
+});
+});
+
+Route::get('/{any}', function () {
+    return view('app');
+})->where('any', '.*');

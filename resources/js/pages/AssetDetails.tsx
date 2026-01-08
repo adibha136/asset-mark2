@@ -1,0 +1,233 @@
+import { useParams, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import api from "@/lib/api";
+import { 
+  ChevronLeft, 
+  Package, 
+  Calendar, 
+  MapPin, 
+  User, 
+  History, 
+  ShieldCheck, 
+  FileText,
+  Clock,
+  ExternalLink,
+  Edit,
+  MoreVertical
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
+
+const AssetDetails = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
+  const { data: asset, isLoading, error } = useQuery({
+    queryKey: ["asset", id],
+    queryFn: async () => {
+      const response = await api.get(`/assets/${id}`);
+      return response.data;
+    },
+    enabled: !!id,
+  });
+
+  if (isLoading) return <div className="p-8 text-center">Loading asset details...</div>;
+  if (error || !asset) return <div className="p-8 text-center text-destructive">Error loading asset details.</div>;
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => navigate("/assets")}
+            className="rounded-full"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold tracking-tight">{asset.name}</h1>
+              <Badge variant="success" className="capitalize">{asset.status}</Badge>
+            </div>
+            <p className="text-muted-foreground">Serial: {asset.serialNumber}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm">
+            <Edit className="h-4 w-4 mr-2" /> Edit
+          </Button>
+          <Button size="sm" className="btn-gradient">
+            <ExternalLink className="h-4 w-4 mr-2" /> Export
+          </Button>
+          <Button variant="ghost" size="icon">
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column: Info Cards */}
+        <div className="lg:col-span-2 space-y-6">
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Package className="h-5 w-5 text-primary" />
+                Asset Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid sm:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 text-sm">
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Type:</span>
+                  <span className="font-medium">{asset.type}</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <MapPin className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Location:</span>
+                  <span className="font-medium">{asset.location}</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Assigned To:</span>
+                  <span className="font-medium text-primary hover:underline cursor-pointer">{asset.assignedTo}</span>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 text-sm">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Purchased:</span>
+                  <span className="font-medium">{asset.purchaseDate}</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Warranty:</span>
+                  <span className="font-medium">{asset.warrantyUntil}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Tabs defaultValue="specs" className="w-full">
+            <TabsList className="bg-muted/50 p-1 rounded-xl">
+              <TabsTrigger value="specs" className="rounded-lg">Specifications</TabsTrigger>
+              <TabsTrigger value="history" className="rounded-lg">Activity History</TabsTrigger>
+              <TabsTrigger value="files" className="rounded-lg">Documents</TabsTrigger>
+            </TabsList>
+            <TabsContent value="specs" className="mt-4">
+              <Card className="glass-card border-none shadow-none">
+                <CardContent className="pt-6 grid sm:grid-cols-2 gap-x-12 gap-y-6">
+                  {Object.entries(asset.specs).map(([key, value]) => (
+                    <div key={key} className="space-y-1">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">{key}</p>
+                      <p className="text-sm font-medium">{value}</p>
+                      <Separator className="mt-2 opacity-50" />
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="history" className="mt-4">
+              <Card className="glass-card border-none shadow-none">
+                <CardContent className="pt-6">
+                  <div className="space-y-6">
+                    {asset.history.map((item, index) => (
+                      <div key={item.id} className="relative pl-8 before:absolute before:left-[11px] before:top-2 before:bottom-[-24px] before:w-[2px] before:bg-border last:before:hidden">
+                        <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center border-2 border-background">
+                          <div className="w-2 h-2 rounded-full bg-primary" />
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-medium">{item.action}</p>
+                            <p className="text-xs text-muted-foreground">by {item.user}</p>
+                          </div>
+                          <div className="text-right">
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              {item.date}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="files" className="mt-4">
+              <Card className="glass-card border-none shadow-none text-center py-12">
+                <CardContent>
+                  <div className="mx-auto w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                    <FileText className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-sm font-medium">No documents uploaded</h3>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-[200px] mx-auto">
+                    Upload purchase receipts, manuals, or warranty certificates.
+                  </p>
+                  <Button variant="outline" size="sm" className="mt-4">
+                    Upload File
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        {/* Right Column: Quick Stats/Actions */}
+        <div className="space-y-6">
+          <Card className="glass-card bg-primary/5 border-primary/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              <Button variant="outline" className="w-full justify-start text-xs h-9 bg-background/50">
+                <Edit className="h-3.5 w-3.5 mr-2" /> Change Status
+              </Button>
+              <Button variant="outline" className="w-full justify-start text-xs h-9 bg-background/50">
+                <User className="h-3.5 w-3.5 mr-2" /> Assign to Someone
+              </Button>
+              <Button variant="outline" className="w-full justify-start text-xs h-9 bg-background/50">
+                <MapPin className="h-3.5 w-3.5 mr-2" /> Relocate
+              </Button>
+              <Separator className="my-1" />
+              <Button variant="ghost" className="w-full justify-start text-xs h-9 text-destructive hover:bg-destructive/10">
+                <ShieldCheck className="h-3.5 w-3.5 mr-2" /> Report Issue
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <History className="h-4 w-4 text-primary" />
+                Asset Lifecycle
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Age</span>
+                <span className="font-medium">2 months</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Estimated Value</span>
+                <span className="font-medium">$2,499.00</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Depreciation</span>
+                <span className="font-medium text-destructive">- $200.00</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AssetDetails;
