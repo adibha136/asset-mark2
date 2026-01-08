@@ -108,6 +108,7 @@ export default function Assets() {
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [domainFilter, setDomainFilter] = useState<string>("all");
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isAddAssetModalOpen, setIsAddAssetModalOpen] = useState(false);
@@ -187,6 +188,41 @@ export default function Assets() {
     },
     enabled: !!selectedTenantId,
   });
+
+  const derivedStats = useMemo(() => {
+    const baseFilteredUsers = tenantUsers.filter(user => {
+      const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesDomain = domainFilter === "all" || user.email?.endsWith(`@${domainFilter}`);
+      return matchesSearch && matchesDomain;
+    });
+
+    const baseFilteredAssets = tenantAssets.filter(asset => {
+      const matchesSearch = asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        asset.serial_number?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesDomain = domainFilter === "all" || asset.assignedUsers?.some(u => u.email?.endsWith(`@${domainFilter}`));
+      return matchesSearch && matchesDomain;
+    });
+
+    return {
+      used_licenses: baseFilteredUsers.filter(u => u.license_name && u.license_name !== 'No License').length,
+      no_license_count: baseFilteredUsers.filter(u => !u.license_name || u.license_name === 'No License').length,
+      asset_count: baseFilteredAssets.length,
+      active_users: baseFilteredUsers.filter(u => u.account_enabled === true).length,
+      inactive_users: baseFilteredUsers.filter(u => u.account_enabled === false).length,
+    };
+  }, [tenantUsers, tenantAssets, searchQuery, domainFilter]);
+
+  const uniqueDomains = useMemo(() => {
+    const domains = new Set<string>();
+    tenantUsers.forEach(user => {
+      if (user.email && user.email.includes('@')) {
+        const domain = user.email.split('@')[1];
+        if (domain) domains.add(domain);
+      }
+    });
+    return Array.from(domains);
+  }, [tenantUsers]);
 
   const syncMutation = useMutation({
     mutationFn: async () => {
@@ -294,10 +330,15 @@ export default function Assets() {
       } else if (statusFilter === 'assigned') {
         matchesStatus = asset.status === 'assigned';
       }
+
+      let matchesDomain = true;
+      if (domainFilter !== "all") {
+        matchesDomain = asset.assignedUsers?.some(u => u.email?.endsWith(`@${domainFilter}`)) || false;
+      }
       
-      return matchesSearch && matchesType && matchesStatus;
+      return matchesSearch && matchesType && matchesStatus && matchesDomain;
     });
-  }, [tenantAssets, searchQuery, typeFilter, statusFilter]);
+  }, [tenantAssets, searchQuery, typeFilter, statusFilter, domainFilter]);
 
   const filteredUsers = useMemo(() => {
     const filtered = tenantUsers.filter((user) => {
@@ -323,7 +364,12 @@ export default function Assets() {
         }
       }
 
-      return matchesSearch && matchesStatus;
+      let matchesDomain = true;
+      if (domainFilter !== "all") {
+        matchesDomain = user.email?.endsWith(`@${domainFilter}`);
+      }
+
+      return matchesSearch && matchesStatus && matchesDomain;
     });
 
     return [...filtered].sort((a, b) => {
@@ -337,7 +383,7 @@ export default function Assets() {
       if (!aInactiveRisk && bInactiveRisk) return 1;
       return 0;
     });
-  }, [tenantUsers, searchQuery, statusFilter]);
+  }, [tenantUsers, searchQuery, statusFilter, domainFilter]);
 
   const assetColumns = [
     {
@@ -765,10 +811,10 @@ export default function Assets() {
           </div>
         </div>
       </div>
-
-      {stats && (
-        <div className="flex flex-wrap gap-4">
-          {stats.used_licenses > 0 && (
+      <div className="flex flex-col md:flex-row gap-3">
+        {/* Statistics Cards */}
+        <div className="flex flex-wrap gap-4 w-full">
+          {derivedStats.used_licenses > 0 && (
             <div
               className={cn(
                 "bg-card border rounded-xl p-4 flex items-center gap-4 cursor-pointer hover:border-teal-500/50 transition-colors min-w-[200px] flex-1",
@@ -781,12 +827,12 @@ export default function Assets() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-medium">Assigned Licenses</p>
-                <p className="text-lg font-bold">{stats.used_licenses}</p>
+                <p className="text-lg font-bold">{derivedStats.used_licenses}</p>
               </div>
             </div>
           )}
 
-          {stats.no_license_count > 0 && (
+          {derivedStats.no_license_count > 0 && (
             <div
               className={cn(
                 "bg-card border rounded-xl p-4 flex items-center gap-4 cursor-pointer hover:border-orange-500/50 transition-colors min-w-[200px] flex-1",
@@ -799,7 +845,7 @@ export default function Assets() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-medium">No License</p>
-                <p className="text-lg font-bold">{stats.no_license_count}</p>
+                <p className="text-lg font-bold">{derivedStats.no_license_count}</p>
               </div>
             </div>
           )}
@@ -816,11 +862,11 @@ export default function Assets() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground font-medium">Total Assets</p>
-              <p className="text-lg font-bold">{stats.asset_count}</p>
+              <p className="text-lg font-bold">{derivedStats.asset_count}</p>
             </div>
           </div>
 
-          {stats.active_users > 0 && (
+          {derivedStats.active_users > 0 && (
             <div
               className={cn(
                 "bg-card border rounded-xl p-4 flex items-center gap-4 cursor-pointer hover:border-indigo-500/50 transition-colors min-w-[200px] flex-1",
@@ -833,12 +879,12 @@ export default function Assets() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-medium">Active Users</p>
-                <p className="text-lg font-bold">{stats.active_users}</p>
+                <p className="text-lg font-bold">{derivedStats.active_users}</p>
               </div>
             </div>
           )}
 
-          {stats.inactive_users > 0 && (
+          {derivedStats.inactive_users > 0 && (
             <div
               className={cn(
                 "bg-card border rounded-xl p-4 flex items-center gap-4 cursor-pointer hover:border-red-500/50 transition-colors min-w-[200px] flex-1",
@@ -851,12 +897,12 @@ export default function Assets() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-medium">Inactive Users</p>
-                <p className="text-lg font-bold">{stats.inactive_users}</p>
+                <p className="text-lg font-bold">{derivedStats.inactive_users}</p>
               </div>
             </div>
           )}
         </div>
-      )}
+      </div>
 
       <div className="bg-card border rounded-xl p-4 space-y-4">
         <div className="flex flex-col md:flex-row gap-3">
@@ -937,7 +983,7 @@ export default function Assets() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {(statusFilter !== 'all' || typeFilter !== 'all' || searchQuery !== '') && (
+            {(statusFilter !== 'all' || typeFilter !== 'all' || searchQuery !== '' || domainFilter !== 'all') && (
               <Button 
                 variant="ghost" 
                 size="sm" 
@@ -945,6 +991,7 @@ export default function Assets() {
                   setStatusFilter('all');
                   setTypeFilter('all');
                   setSearchQuery('');
+                  setDomainFilter('all');
                 }}
                 className="h-9 px-2 text-muted-foreground"
               >
@@ -959,6 +1006,33 @@ export default function Assets() {
             )}
           </div>
         </div>
+
+        {uniqueDomains.length > 1 && (
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-border/50">
+            <Button
+              variant={domainFilter === "all" ? "secondary" : "outline"}
+              size="sm"
+              className="h-7 px-3 text-xs rounded-full"
+              onClick={() => setDomainFilter("all")}
+            >
+              All Domains
+            </Button>
+            {uniqueDomains.map((domain) => (
+              <Button
+                key={domain}
+                variant={domainFilter === domain ? "secondary" : "outline"}
+                size="sm"
+                className={cn(
+                  "h-7 px-3 text-xs rounded-full",
+                  domainFilter === domain && "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                )}
+                onClick={() => setDomainFilter(domain)}
+              >
+                {domain}
+              </Button>
+            ))}
+          </div>
+        )}
 
         <div className="border rounded-lg overflow-hidden">
           <DataTable
