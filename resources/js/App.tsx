@@ -11,6 +11,7 @@ import Tenants from "./pages/Tenants";
 import UsersRoles from "./pages/UsersRoles";
 import TenantUsers from "./pages/TenantUsers";
 import AssetDetails from "./pages/AssetDetails";
+import AssetReport from "./pages/AssetReport";
 import ManageUserAssets from "./pages/ManageUserAssets";
 import Settings from "./pages/Settings";
 import Checklists from "./pages/Checklists";
@@ -36,6 +37,7 @@ const App = () => (
                   <Routes>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/assets" element={<Assets />} />
+                    <Route path="/assets/report" element={<AssetReport />} />
                     <Route path="/assets/:id" element={<AssetDetails />} />
                     <Route path="/tenants" element={<Tenants />} />
                     <Route path="/tenants/:id/users" element={<TenantUsers />} />

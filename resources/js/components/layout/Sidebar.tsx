@@ -11,8 +11,11 @@ import {
   ChevronRight,
   HelpCircle,
   LogOut,
+  ChevronDown,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useState, useEffect } from "react";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -24,7 +27,15 @@ interface SidebarProps {
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Assets", href: "/assets", icon: Package },
+  { 
+    name: "Assets", 
+    href: "/assets", 
+    icon: Package,
+    children: [
+      { name: "Asset List", href: "/assets", icon: Package },
+      { name: "Asset Report", href: "/assets/report", icon: BarChart3 },
+    ]
+  },
   { name: "Tenants", href: "/tenants", icon: Building2 },
   { name: "Users & Roles", href: "/users", icon: Users },
   { name: "Checklists", href: "/checklists", icon: ClipboardCheck },
@@ -44,6 +55,28 @@ export function Sidebar({
 }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const [openMenus, setOpenMenus] = useState<string[]>([]);
+
+  // Automatically open submenus if a child is active
+  useEffect(() => {
+    navigation.forEach(item => {
+      if (item.children?.some(child => location.pathname === child.href)) {
+        if (!openMenus.includes(item.name)) {
+          setOpenMenus(prev => [...prev, item.name]);
+        }
+      }
+    });
+  }, [location.pathname]);
+
+  const toggleMenu = (name: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpenMenus(prev => 
+      prev.includes(name) 
+        ? prev.filter(i => i !== name) 
+        : [...prev, name]
+    );
+  };
 
   const handleLogout = () => {
     // In a real app, you would clear tokens/session here
@@ -92,11 +125,56 @@ export function Sidebar({
             )}
           </div>
           {navigation.map((item) => {
-            const isActive = location.pathname === item.href;
+            const hasChildren = item.children && item.children.length > 0;
+            const isMenuOpen = openMenus.includes(item.name);
+            const isChildActive = item.children?.some(child => location.pathname === child.href);
+            const isParentActive = location.pathname === item.href;
+            const isActive = isParentActive || isChildActive;
+
+            if (hasChildren && !collapsed) {
+              return (
+                <div key={item.name} className="space-y-1">
+                  <button
+                    onClick={(e) => toggleMenu(item.name, e)}
+                    className={cn(
+                      "sidebar-item w-full flex items-center justify-between group",
+                      isActive && "sidebar-item-active"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <item.icon className={cn("w-5 h-5 flex-shrink-0", isActive && "text-primary")} />
+                      <span>{item.name}</span>
+                    </div>
+                    <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", isMenuOpen && "rotate-180")} />
+                  </button>
+                  {isMenuOpen && (
+                    <div className="ml-4 pl-4 border-l border-sidebar-border space-y-1 mt-1 animate-in slide-in-from-top-1 duration-200">
+                      {item.children?.map((child) => {
+                        const isChildLinkActive = location.pathname === child.href;
+                        return (
+                          <NavLink
+                            key={child.name}
+                            to={child.href}
+                            className={cn(
+                              "sidebar-item text-sm py-2 px-3 h-9",
+                              isChildLinkActive ? "bg-primary/10 text-primary font-medium" : "text-sidebar-muted hover:text-sidebar-foreground"
+                            )}
+                          >
+                            {child.icon && <child.icon className="w-4 h-4 mr-2" />}
+                            <span>{child.name}</span>
+                          </NavLink>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             return (
               <NavLink
                 key={item.name}
-                to={item.href}
+                to={item.href || "#"}
                 className={cn(
                   "sidebar-item",
                   isActive && "sidebar-item-active",

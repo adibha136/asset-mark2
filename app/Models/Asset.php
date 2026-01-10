@@ -20,12 +20,27 @@ class Asset extends Model
         'license_expiry',
         'description',
         'status',
+        'cost',
+        'purchased_type',
+        'file_path',
     ];
+
+    protected $appends = ['assignedto', 'location'];
 
     protected $casts = [
         'warranty_expiry' => 'date',
         'license_expiry' => 'date',
     ];
+
+    public function getAssignedtoAttribute()
+    {
+        return $this->assignedUsers->first()?->name;
+    }
+
+    public function getLocationAttribute()
+    {
+        return $this->assignedUsers->first()?->tenant->name ?? 'Main Office';
+    }
 
     public function tenant()
     {
@@ -42,5 +57,15 @@ class Asset extends Model
     public function assignments()
     {
         return $this->hasMany(AssetAssignment::class);
+    }
+
+    public function activities()
+    {
+        return $this->hasMany(AssetActivity::class)->orderBy('created_at', 'desc');
+    }
+
+    public function documents()
+    {
+        return $this->hasMany(AssetDocument::class);
     }
 }

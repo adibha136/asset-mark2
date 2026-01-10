@@ -190,7 +190,7 @@ export function TopNav({ sidebarCollapsed, onMenuClick, isMobile }: TopNavProps)
                           className="w-full text-left px-2 py-1.5 text-sm rounded-md hover:bg-muted transition-colors flex items-center gap-2"
                           onMouseDown={(e) => {
                             e.preventDefault();
-                            navigate(`/tenants/${user.tenant_id}/users`);
+                            navigate(`/tenants/${user.tenant_id}/users/${user.id}/assets`);
                             setSearchFocused(false);
                           }}
                         >

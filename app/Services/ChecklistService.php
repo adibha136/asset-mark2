@@ -82,9 +82,8 @@ class ChecklistService
             // Answered in this submission - ONLY count answers for questions that exist in the current template
             $questionIds = $questions->pluck('id')->toArray();
             $aCount = (int) $submission->answers
-                ->filter(fn ($answer) => 
-                    ! is_null($answer->answer_value) && 
-                    $answer->answer_value !== '' && 
+                ->filter(fn ($answer) => ! is_null($answer->answer_value) &&
+                    $answer->answer_value !== '' &&
                     in_array($answer->question_id, $questionIds)
                 )
                 ->unique('question_id')

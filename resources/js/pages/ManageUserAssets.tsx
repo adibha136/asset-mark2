@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Modal } from "@/components/shared/Modal";
+import { Modal, ConfirmModal } from "@/components/shared/Modal";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -83,6 +83,8 @@ export default function ManageUserAssets() {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [targetUser, setTargetUser] = useState<DirectoryUser | null>(null);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [assetToDelete, setAssetToDelete] = useState<Asset | null>(null);
 
   const [assetForm, setAssetForm] = useState({
     name: "",
@@ -198,6 +200,8 @@ export default function ManageUserAssets() {
     },
     onSuccess: () => {
       toast.success("Asset unassigned successfully");
+      setIsDeleteModalOpen(false);
+      setAssetToDelete(null);
       refetchAssets();
       refetchUserAssets();
     },
@@ -457,16 +461,20 @@ export default function ManageUserAssets() {
                     </div>
                     <div className="flex-1 space-y-1">
                       <div className="flex items-center justify-between">
-                        <p className="font-bold text-base tracking-tight">{asset.name}</p>
+                        <p 
+                          className="font-bold text-base tracking-tight cursor-pointer hover:text-primary transition-colors"
+                          onClick={() => navigate(`/assets/${asset.id}`)}
+                        >
+                          {asset.name}
+                        </p>
                         <div className="flex items-center gap-1.5">
                           <Button
                             size="icon"
                             variant="ghost"
                             className="h-7 w-7 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
                             onClick={() => {
-                              if (confirm(`Revoke ${asset.name} access?`)) {
-                                unassignMutation.mutate({ assetId: asset.id });
-                              }
+                              setAssetToDelete(asset);
+                              setIsDeleteModalOpen(true);
                             }}
                             disabled={unassignMutation.isPending}
                           >
@@ -659,8 +667,11 @@ export default function ManageUserAssets() {
                       <div className="w-12 h-12 rounded-2xl bg-background border border-border/50 flex items-center justify-center group-hover:bg-primary group-hover:text-white group-hover:scale-110 group-hover:rotate-3 transition-all shadow-sm">
                         {asset.type === 'hardware' ? <Laptop className="w-6 h-6" /> : <Shield className="w-6 h-6" />}
                       </div>
-                      <div>
-                        <p className="font-black text-sm tracking-tight">{asset.name}</p>
+                      <div 
+                        className="cursor-pointer group/name"
+                        onClick={() => navigate(`/assets/${asset.id}`)}
+                      >
+                        <p className="font-black text-sm tracking-tight group-hover/name:text-primary transition-colors">{asset.name}</p>
                         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5">{asset.type}</p>
                       </div>
                     </div>
@@ -710,9 +721,8 @@ export default function ManageUserAssets() {
                         variant="ghost"
                         className="h-10 w-10 rounded-xl hover:bg-destructive/10 hover:text-destructive transition-colors"
                         onClick={() => {
-                          if (confirm(`Remove ${asset.name} assignment?`)) {
-                            unassignMutation.mutate({ assetId: asset.id });
-                          }
+                          setAssetToDelete(asset);
+                          setIsDeleteModalOpen(true);
                         }}
                       >
                         <UserMinus className="w-4 h-4" />
@@ -968,7 +978,7 @@ export default function ManageUserAssets() {
                       <Input
                         placeholder="e.g. MacBook Pro, VPN"
                         value={assetForm.name}
-                        onChange={e => setAssetForm({ ...assetForm, name: e.target.value })}
+                        onChange={e => setAssetForm(prev => ({ ...prev, name: e.target.value }))}
                         className="rounded-2xl h-12 text-sm bg-background border-border/50 focus-visible:ring-primary/20 focus-visible:border-primary/30 transition-all pl-11"
                       />
                       <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
@@ -980,7 +990,7 @@ export default function ManageUserAssets() {
                       <Input
                         placeholder="SN-XXXX"
                         value={assetForm.serial_number}
-                        onChange={e => setAssetForm({ ...assetForm, serial_number: e.target.value })}
+                        onChange={e => setAssetForm(prev => ({ ...prev, serial_number: e.target.value }))}
                         className="rounded-2xl h-12 text-sm bg-background border-border/50 focus-visible:ring-primary/20 focus-visible:border-primary/30 transition-all pl-11"
                       />
                       <Fingerprint className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
@@ -988,7 +998,7 @@ export default function ManageUserAssets() {
                   </div>
                   <div className="space-y-3">
                     <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Classification</Label>
-                    <Select value={assetForm.type} onValueChange={v => setAssetForm({ ...assetForm, type: v })}>
+                    <Select value={assetForm.type} onValueChange={v => setAssetForm(prev => ({ ...prev, type: v }))}>
                       <SelectTrigger className="rounded-2xl h-12 text-sm bg-background border-border/50 focus-visible:ring-primary/20 transition-all px-4">
                         <SelectValue />
                       </SelectTrigger>
@@ -1005,10 +1015,10 @@ export default function ManageUserAssets() {
                       <Input
                         type="date"
                         value={assetForm.type === 'hardware' ? assetForm.warranty_expiry : assetForm.license_expiry}
-                        onChange={e => setAssetForm({
-                          ...assetForm,
-                          [assetForm.type === 'hardware' ? 'warranty_expiry' : 'license_expiry']: e.target.value
-                        })}
+                        onChange={e => setAssetForm(prev => ({
+                          ...prev,
+                          [prev.type === 'hardware' ? 'warranty_expiry' : 'license_expiry']: e.target.value
+                        }))}
                         className="rounded-2xl h-12 text-sm bg-background border-border/50 focus-visible:ring-primary/20 transition-all px-4"
                       />
                     </div>
@@ -1018,7 +1028,7 @@ export default function ManageUserAssets() {
                     <Input
                       placeholder="Additional details regarding this deployment..."
                       value={assetForm.description}
-                      onChange={e => setAssetForm({ ...assetForm, description: e.target.value })}
+                      onChange={e => setAssetForm(prev => ({ ...prev, description: e.target.value }))}
                       className="rounded-2xl h-12 text-sm bg-background border-border/50 focus-visible:ring-primary/20 transition-all px-4"
                     />
                   </div>
@@ -1043,6 +1053,21 @@ export default function ManageUserAssets() {
           </Tabs>
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={isDeleteModalOpen}
+        onOpenChange={setIsDeleteModalOpen}
+        title={assetToDelete?.type === 'access' ? 'Revoke Access' : 'Remove Assignment'}
+        description={`Are you sure you want to ${assetToDelete?.type === 'access' ? 'revoke this access' : 'remove this assignment'}? This action cannot be undone.`}
+        confirmLabel={assetToDelete?.type === 'access' ? 'Revoke' : 'Remove'}
+        onConfirm={() => {
+          if (assetToDelete) {
+            unassignMutation.mutate({ assetId: assetToDelete.id });
+          }
+        }}
+        variant="destructive"
+        isLoading={unassignMutation.isPending}
+      />
     </div>
   );
 }

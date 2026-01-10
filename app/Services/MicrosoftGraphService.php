@@ -52,7 +52,7 @@ class MicrosoftGraphService
         // Fallback for unknown SKUs: clean up the string (e.g., O365_BUSINESS_ESSENTIALS -> O365 Business Essentials)
         $name = str_replace('_', ' ', $skuPartNumber);
         $name = str_replace('-', ' ', $name);
-        
+
         return ucwords(strtolower($name));
     }
 

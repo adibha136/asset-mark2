@@ -2,11 +2,9 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
-use Illuminate\Database\Seeder;
-
 use App\Models\Role;
 use App\Models\RolePermission;
+use Illuminate\Database\Seeder;
 
 class RoleSeeder extends Seeder
 {
@@ -29,7 +27,7 @@ class RoleSeeder extends Seeder
                     'users' => [true, true, true, true],
                     'checklists' => [true, true, true, true],
                     'settings' => [true, true, true, true],
-                ]
+                ],
             ],
             [
                 'name' => 'Manager',
@@ -42,7 +40,7 @@ class RoleSeeder extends Seeder
                     'users' => [true, true, true, false],
                     'checklists' => [true, true, true, true],
                     'settings' => [false, false, false, false],
-                ]
+                ],
             ],
             [
                 'name' => 'User',
@@ -55,7 +53,7 @@ class RoleSeeder extends Seeder
                     'users' => [false, false, false, false],
                     'checklists' => [true, false, false, false],
                     'settings' => [false, false, false, false],
-                ]
+                ],
             ],
             [
                 'name' => 'Viewer',
@@ -68,8 +66,8 @@ class RoleSeeder extends Seeder
                     'users' => [true, false, false, false],
                     'checklists' => [true, false, false, false],
                     'settings' => [false, false, false, false],
-                ]
-            ]
+                ],
+            ],
         ];
 
         foreach ($roles as $roleData) {

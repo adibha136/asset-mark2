@@ -117,7 +117,25 @@ export default function UsersRoles() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setIsAddUserModalOpen(false);
+      setNewUser({
+        name: "",
+        email: "",
+        password: "",
+        role: "user",
+        phone: "",
+      });
       toast.success("User added successfully");
+    },
+    onError: (error: any) => {
+      const message = error.response?.data?.message || "Failed to add user";
+      const errors = error.response?.data?.errors;
+      
+      if (errors) {
+        const firstError = Object.values(errors)[0] as string[];
+        toast.error(firstError[0] || message);
+      } else {
+        toast.error(message);
+      }
     }
   });
 
@@ -127,6 +145,17 @@ export default function UsersRoles() {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setIsEditUserModalOpen(false);
       toast.success("User updated successfully");
+    },
+    onError: (error: any) => {
+      const message = error.response?.data?.message || "Failed to update user";
+      const errors = error.response?.data?.errors;
+      
+      if (errors) {
+        const firstError = Object.values(errors)[0] as string[];
+        toast.error(firstError[0] || message);
+      } else {
+        toast.error(message);
+      }
     }
   });
 
@@ -136,6 +165,10 @@ export default function UsersRoles() {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setIsDeleteUserModalOpen(false);
       toast.success("User deleted successfully");
+    },
+    onError: (error: any) => {
+      const message = error.response?.data?.message || "Failed to delete user";
+      toast.error(message);
     }
   });
 
@@ -456,6 +489,12 @@ export default function UsersRoles() {
               <Input type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} placeholder="••••••••" />
             </div>
             <div className="space-y-2">
+              <Label>Phone</Label>
+              <Input value={newUser.phone} onChange={e => setNewUser({...newUser, phone: e.target.value})} placeholder="+1 (555) 000-0000" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
               <Label>Role</Label>
               <Select value={newUser.role} onValueChange={v => setNewUser({...newUser, role: v})}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -484,6 +523,10 @@ export default function UsersRoles() {
           <div className="space-y-2">
             <Label>Name</Label>
             <Input value={editUser.name || ""} onChange={e => setEditUser({...editUser, name: e.target.value})} />
+          </div>
+          <div className="space-y-2">
+            <Label>Phone</Label>
+            <Input value={editUser.phone || ""} onChange={e => setEditUser({...editUser, phone: e.target.value})} />
           </div>
           <div className="space-y-2">
             <Label>Role</Label>

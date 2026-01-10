@@ -12,7 +12,7 @@ class RolePermission extends Model
         'can_view',
         'can_add',
         'can_edit',
-        'can_delete'
+        'can_delete',
     ];
 
     protected $casts = [

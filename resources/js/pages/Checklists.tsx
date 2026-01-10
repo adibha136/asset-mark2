@@ -29,7 +29,7 @@ import api from "@/lib/api";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Modal } from "@/components/shared/Modal";
+import { Modal, ConfirmModal } from "@/components/shared/Modal";
 
 interface Question {
   id?: number;
@@ -66,6 +66,10 @@ export default function Checklists() {
   const [isSaving, setIsSaving] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [activeTab, setActiveTab] = useState("templates");
+
+  // Delete Confirmation State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ id: number, type: 'template' | 'assignment' } | null>(null);
 
   // Assignment State
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
@@ -190,15 +194,33 @@ export default function Checklists() {
     }
   };
 
-  const handleDeleteTemplate = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this template?")) return;
+  const handleDeleteTemplate = (id: number) => {
+    setItemToDelete({ id, type: 'template' });
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+
+    const { id, type } = itemToDelete;
+    setIsSaving(true);
     try {
-      await api.delete(`/checklist-templates/${id}`);
-      toast.success("Template deleted successfully");
-      fetchTemplates();
+      if (type === 'template') {
+        await api.delete(`/checklist-templates/${id}`);
+        toast.success("Template deleted successfully");
+        fetchTemplates();
+      } else {
+        await api.delete(`/checklist-assignments/${id}`);
+        toast.success("Assignment deleted");
+        fetchAssignments();
+      }
+      setIsDeleteModalOpen(false);
+      setItemToDelete(null);
     } catch (error) {
-      console.error("Failed to delete template:", error);
-      toast.error("Failed to delete template");
+      console.error(`Failed to delete ${type}:`, error);
+      toast.error(`Failed to delete ${type}`);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -218,15 +240,9 @@ export default function Checklists() {
     }
   }
 
-  const handleDeleteAssignment = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this assignment?")) return;
-    try {
-      await api.delete(`/checklist-assignments/${id}`);
-      toast.success("Assignment deleted");
-      fetchAssignments();
-    } catch (error) {
-      toast.error("Failed to delete assignment");
-    }
+  const handleDeleteAssignment = (id: number) => {
+    setItemToDelete({ id, type: 'assignment' });
+    setIsDeleteModalOpen(true);
   };
 
   if (isLoading) {
@@ -587,6 +603,17 @@ export default function Checklists() {
           </div>
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={isDeleteModalOpen}
+        onOpenChange={setIsDeleteModalOpen}
+        title={itemToDelete?.type === 'template' ? 'Delete Template' : 'Delete Assignment'}
+        description={`Are you sure you want to delete this ${itemToDelete?.type}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={confirmDelete}
+        variant="destructive"
+        isLoading={isSaving}
+      />
 
     </div>
   );

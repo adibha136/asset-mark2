@@ -14,8 +14,15 @@ import {
   Clock,
   ExternalLink,
   Edit,
-  MoreVertical
+  MoreVertical,
+  Check,
+  ChevronsUpDown,
+  Zap,
+  Download,
+  Upload,
+  Trash2
 } from "lucide-react";
+import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -24,15 +31,81 @@ import { Separator } from "@/components/ui/separator";
 import { Modal } from "@/components/shared/Modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import SummernoteEditor from "@/components/ui/summernote-editor";
+
+interface DirectoryUser {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  mobile_phone?: string;
+  job_title?: string;
+  profile_pic_url?: string;
+  license_name?: string;
+  department?: string;
+  account_enabled?: boolean;
+}
+
+interface AssetDocument {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
+  size: number;
+  date: string;
+}
+
+interface AssetActivity {
+  id: string;
+  action: string;
+  description: string;
+  user: string;
+  date: string;
+}
+
+interface Asset {
+  id: string;
+  tenant_id: string;
+  name: string;
+  type: string;
+  status: string;
+  serialNumber: string;
+  location: string;
+  assignedTo: string;
+  purchaseDate: string;
+  warrantyUntil: string;
+  cost: string;
+  description: string;
+  documents: AssetDocument[];
+  history: AssetActivity[];
+}
 
 const AssetDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isUserComboboxOpen, setIsUserComboboxOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<DirectoryUser | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [editForm, setEditForm] = useState({
     name: "",
     type: "",
@@ -40,9 +113,15 @@ const AssetDetails = () => {
     status: "",
     description: "",
     warranty_expiry: "",
+    cost: "",
+    assignedTo: "",
   });
 
-  const { data: asset, isLoading, error, refetch } = useQuery({
+  const [statusForm, setStatusForm] = useState({
+    status: "",
+  });
+
+  const { data: asset, isLoading, error, refetch } = useQuery<Asset>({
     queryKey: ["asset", id],
     queryFn: async () => {
       const response = await api.get(`/assets/${id}`);
@@ -50,6 +129,62 @@ const AssetDetails = () => {
     },
     enabled: !!id,
   });
+
+  const { data: tenantUsers = [] } = useQuery<DirectoryUser[]>({
+    queryKey: ["users", asset?.tenant_id],
+    queryFn: async () => {
+      const response = await api.get(`/tenants/${asset.tenant_id}/directory-users`);
+      return response.data;
+    },
+    enabled: !!asset?.tenant_id && isAssignModalOpen,
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: async ({ userId, assetId }: { userId: string; assetId: string }) => {
+      const response = await api.post(`/tenants/${asset.tenant_id}/assign-asset`, {
+        user_id: userId,
+        asset_id: assetId,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      toast.success("Asset assigned successfully");
+      setIsAssignModalOpen(false);
+      setSelectedUser(null);
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["assets"] });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Failed to assign asset");
+    },
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await api.post(`/assets/${id}/documents`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      toast.success("Document uploaded successfully");
+      refetch();
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || "Failed to upload document");
+    },
+  });
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      uploadMutation.mutate(file);
+    }
+  };
 
   useEffect(() => {
     if (asset) {
@@ -60,6 +195,11 @@ const AssetDetails = () => {
         status: asset.status || "",
         description: asset.description || "",
         warranty_expiry: asset.warrantyUntil || "",
+        cost: asset.cost || "",
+        assignedTo: asset.assignedTo || "Unassigned",
+      });
+      setStatusForm({
+        status: asset.status || "",
       });
     }
   }, [asset]);
@@ -72,6 +212,7 @@ const AssetDetails = () => {
     onSuccess: () => {
       toast.success("Asset updated successfully");
       setIsEditModalOpen(false);
+      setIsStatusModalOpen(false);
       refetch();
       queryClient.invalidateQueries({ queryKey: ["assets"] });
     },
@@ -83,6 +224,15 @@ const AssetDetails = () => {
   const handleUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     updateMutation.mutate(editForm);
+  };
+
+  const handleStatusUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
+    // Merge status with other asset fields to satisfy backend validation
+    updateMutation.mutate({
+      ...editForm,
+      status: statusForm.status
+    });
   };
 
   if (isLoading) return <div className="p-8 text-center">Loading asset details...</div>;
@@ -104,7 +254,16 @@ const AssetDetails = () => {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold tracking-tight">{asset.name}</h1>
-              <Badge variant={asset.status === 'active' || asset.status === 'available' ? "success" : "warning"} className="capitalize">{asset.status}</Badge>
+              <Badge 
+                variant={
+                  editForm.status === 'active' || editForm.status === 'available' || editForm.status === 'assigned' ? "success" : 
+                  editForm.status === 'damaged' ? "destructive" : 
+                  "warning"
+                } 
+                className="capitalize"
+              >
+                {editForm.status}
+              </Badge>
             </div>
             <p className="text-muted-foreground">Serial: {asset.serialNumber}</p>
           </div>
@@ -124,8 +283,8 @@ const AssetDetails = () => {
 
       {/* Edit Modal */}
       <Modal
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
+        open={isEditModalOpen}
+        onOpenChange={setIsEditModalOpen}
         title="Edit Asset"
         description="Update the asset information below."
       >
@@ -162,14 +321,14 @@ const AssetDetails = () => {
               <Input
                 id="serial_number"
                 value={editForm.serial_number}
-                onChange={(e) => setEditForm({ ...editForm, serial_number: e.target.value })}
+                onChange={(e) => setEditForm(prev => ({ ...prev, serial_number: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="status">Status</Label>
               <Select
                 value={editForm.status}
-                onValueChange={(value) => setEditForm({ ...editForm, status: value })}
+                onValueChange={(value) => setEditForm(prev => ({ ...prev, status: value }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select status" />
@@ -182,22 +341,32 @@ const AssetDetails = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2 col-span-2">
+            <div className="space-y-2">
               <Label htmlFor="warranty_expiry">Warranty Expiry</Label>
               <Input
                 id="warranty_expiry"
                 type="date"
                 value={editForm.warranty_expiry}
-                onChange={(e) => setEditForm({ ...editForm, warranty_expiry: e.target.value })}
+                onChange={(e) => setEditForm(prev => ({ ...prev, warranty_expiry: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cost">Cost</Label>
+              <Input
+                id="cost"
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={editForm.cost}
+                onChange={(e) => setEditForm(prev => ({ ...prev, cost: e.target.value }))}
               />
             </div>
             <div className="space-y-2 col-span-2">
               <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
+              <SummernoteEditor
                 value={editForm.description}
-                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                rows={3}
+                onChange={(content) => setEditForm(prev => ({ ...prev, description: content }))}
+                placeholder="Additional details..."
               />
             </div>
           </div>
@@ -210,6 +379,138 @@ const AssetDetails = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+      
+      {/* Change Status Modal */}
+      <Modal
+        open={isStatusModalOpen}
+        onOpenChange={setIsStatusModalOpen}
+        title="Change Asset Status"
+        description="Update the current status of this asset."
+      >
+        <form onSubmit={handleStatusUpdate} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="status-dropdown">New Status</Label>
+            <Select
+              value={statusForm.status}
+              onValueChange={(value) => setStatusForm({ status: value })}
+            >
+              <SelectTrigger id="status-dropdown">
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="available">Available</SelectItem>
+                <SelectItem value="damaged">Damaged</SelectItem>
+                <SelectItem value="unavailable">Unavailable</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex justify-end gap-3 pt-4">
+            <Button type="button" variant="outline" onClick={() => setIsStatusModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? "Updating..." : "Update Status"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Assign Asset Modal */}
+      <Modal
+        open={isAssignModalOpen}
+        onOpenChange={setIsAssignModalOpen}
+        title="Assign Asset"
+        description={`Assign "${asset?.name}" to a user`}
+        size="md"
+        footer={
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsAssignModalOpen(false);
+                setSelectedUser(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              className="btn-gradient"
+              onClick={() => {
+                if (selectedUser && asset) {
+                  assignMutation.mutate({ userId: selectedUser.id, assetId: asset.id });
+                }
+              }}
+              disabled={!selectedUser || assignMutation.isPending}
+            >
+              {assignMutation.isPending ? "Assigning..." : "Confirm Assignment"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4 py-4">
+          <div className="p-3 border rounded-lg bg-muted/30">
+            <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Selected Asset</p>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Zap className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium">{asset?.name}</p>
+                <p className="text-xs text-muted-foreground">{asset?.type}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Select User</Label>
+            <Popover open={isUserComboboxOpen} onOpenChange={setIsUserComboboxOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={isUserComboboxOpen}
+                  className="w-full justify-between font-normal bg-background"
+                >
+                  {selectedUser ? selectedUser.name : "Search for a user..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search users..." />
+                  <CommandList>
+                    <CommandEmpty>No user found.</CommandEmpty>
+                    <CommandGroup>
+                      {tenantUsers.map((user) => (
+                        <CommandItem
+                          key={user.id}
+                          value={`${user.name} ${user.email}`}
+                          onSelect={() => {
+                            setSelectedUser(user);
+                            setIsUserComboboxOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              selectedUser?.id === user.id ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-medium">{user.name}</span>
+                            <span className="text-xs text-muted-foreground">{user.email}</span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
       </Modal>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -237,7 +538,12 @@ const AssetDetails = () => {
                 <div className="flex items-center gap-3 text-sm">
                   <User className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Assigned To:</span>
-                  <span className="font-medium text-primary hover:underline cursor-pointer">{asset.assignedTo}</span>
+                  <span 
+                    className="font-medium text-primary hover:underline cursor-pointer"
+                    onClick={() => setIsAssignModalOpen(true)}
+                  >
+                    {editForm.assignedTo}
+                  </span>
                 </div>
               </div>
               <div className="space-y-4">
@@ -252,12 +558,6 @@ const AssetDetails = () => {
                   <span className="font-medium">{asset.warrantyUntil || "No warranty info"}</span>
                 </div>
               </div>
-              {asset.description && (
-                <div className="col-span-2 pt-4">
-                  <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Description</span>
-                  <p className="text-sm mt-1">{asset.description}</p>
-                </div>
-              )}
             </CardContent>
           </Card>
 
@@ -269,14 +569,12 @@ const AssetDetails = () => {
             </TabsList>
             <TabsContent value="specs" className="mt-4">
               <Card className="glass-card border-none shadow-none">
-                <CardContent className="pt-6 grid sm:grid-cols-2 gap-x-12 gap-y-6">
-                  {Object.entries(asset.specs).map(([key, value]) => (
-                    <div key={key} className="space-y-1">
-                      <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">{key}</p>
-                      <p className="text-sm font-medium">{value}</p>
-                      <Separator className="mt-2 opacity-50" />
+                <CardContent className="pt-6">
+                  {asset.description && (
+                    <div className="prose prose-sm max-w-none dark:prose-invert">
+                      <div dangerouslySetInnerHTML={{ __html: asset.description }} />
                     </div>
-                  ))}
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -292,7 +590,10 @@ const AssetDetails = () => {
                         <div className="flex items-center justify-between gap-4">
                           <div>
                             <p className="text-sm font-medium">{item.action}</p>
-                            <p className="text-xs text-muted-foreground">by {item.user}</p>
+                            {item.description && (
+                              <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-1">by {item.user}</p>
                           </div>
                           <div className="text-right">
                             <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -308,18 +609,84 @@ const AssetDetails = () => {
               </Card>
             </TabsContent>
             <TabsContent value="files" className="mt-4">
-              <Card className="glass-card border-none shadow-none text-center py-12">
-                <CardContent>
-                  <div className="mx-auto w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                    <FileText className="h-6 w-6 text-muted-foreground" />
+              <Card className="glass-card border-none shadow-none">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="text-sm font-medium">Asset Documents</h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        View and manage all documents related to this asset.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        className="hidden"
+                        ref={fileInputRef}
+                        onChange={handleFileUpload}
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadMutation.isPending}
+                      >
+                        {uploadMutation.isPending ? (
+                          <Clock className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4 mr-2" />
+                        )}
+                        Upload File
+                      </Button>
+                    </div>
                   </div>
-                  <h3 className="text-sm font-medium">No documents uploaded</h3>
-                  <p className="text-xs text-muted-foreground mt-1 max-w-[200px] mx-auto">
-                    Upload purchase receipts, manuals, or warranty certificates.
-                  </p>
-                  <Button variant="outline" size="sm" className="mt-4">
-                    Upload File
-                  </Button>
+
+                  {asset.documents && asset.documents.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {asset.documents.map((doc: AssetDocument) => (
+                        <div 
+                          key={doc.id}
+                          className="flex items-center justify-between p-3 rounded-lg border bg-muted/30 group hover:border-primary/50 transition-colors"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="p-2 bg-background rounded-md border shadow-sm">
+                              <FileText className="h-4 w-4 text-primary" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{doc.name}</p>
+                              <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                                <span className="uppercase">{doc.type || 'FILE'}</span>
+                                <span>•</span>
+                                <span>{doc.size ? `${(doc.size / 1024).toFixed(1)} KB` : 'N/A'}</span>
+                                <span>•</span>
+                                <span>{doc.date}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8"
+                              onClick={() => window.open(doc.url, '_blank')}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <div className="mx-auto w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                        <FileText className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                      <h3 className="text-sm font-medium">No documents uploaded</h3>
+                      <p className="text-xs text-muted-foreground mt-1 max-w-[200px] mx-auto">
+                        Upload purchase receipts, manuals, or warranty certificates.
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -333,10 +700,14 @@ const AssetDetails = () => {
               <CardTitle className="text-sm font-semibold">Quick Actions</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-2">
-              <Button variant="outline" className="w-full justify-start text-xs h-9 bg-background/50">
+              <Button 
+                variant="outline" 
+                className="w-full justify-start text-xs h-9 bg-background/50"
+                onClick={() => setIsStatusModalOpen(true)}
+              >
                 <Edit className="h-3.5 w-3.5 mr-2" /> Change Status
               </Button>
-              <Button variant="outline" className="w-full justify-start text-xs h-9 bg-background/50">
+              <Button variant="outline" className="w-full justify-start text-xs h-9 bg-background/50" onClick={() => setIsAssignModalOpen(true)}>
                 <User className="h-3.5 w-3.5 mr-2" /> Assign to Someone
               </Button>
               <Button variant="outline" className="w-full justify-start text-xs h-9 bg-background/50">
@@ -368,8 +739,8 @@ const AssetDetails = () => {
                 </span>
               </div>
               <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">Estimated Value</span>
-                <span className="font-medium">$2,499.00</span>
+                <span className="text-muted-foreground">Cost of Asset</span>
+                <span className="font-medium">${asset.cost ? parseFloat(asset.cost).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : "0.00"}</span>
               </div>
             </CardContent>
           </Card>

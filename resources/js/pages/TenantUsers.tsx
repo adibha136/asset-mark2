@@ -120,8 +120,11 @@ export default function TenantUsers() {
       key: "name",
       header: "User",
       render: (user: DirectoryUser) => (
-        <div className="flex items-center gap-3">
-          <Avatar className="w-10 h-10 rounded-lg">
+        <div 
+          className="flex items-center gap-3 cursor-pointer hover:text-primary transition-colors group"
+          onClick={() => navigate(`/tenants/${id}/users/${user.id}/assets`)}
+        >
+          <Avatar className="w-10 h-10 rounded-lg group-hover:ring-2 group-hover:ring-primary/20 transition-all">
             <AvatarImage src={user.avatar} loading="lazy" decoding="async" />
             <AvatarFallback className="rounded-lg bg-primary/10 text-primary">
               {user.name.slice(0, 2).toUpperCase()}

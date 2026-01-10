@@ -48,6 +48,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { ChecklistFillModal } from "@/components/checklist/ChecklistFillModal";
+import SummernoteEditor from "@/components/ui/summernote-editor";
 
 interface Tenant {
   id: string;
@@ -86,6 +87,7 @@ interface Asset {
   serial_number?: string;
   warranty_expiry?: string;
   license_expiry?: string;
+  assignedto?: string;
   assignedUsers?: DirectoryUser[];
 }
 
@@ -129,7 +131,10 @@ export default function Assets() {
     warranty_expiry: "",
     license_expiry: "",
     description: "",
+    cost: "",
+    purchased_type: "Online",
   });
+  const [assetFile, setAssetFile] = useState<File | null>(null);
 
   const [checklistUserId, setChecklistUserId] = useState<string | null>(null);
 
@@ -199,7 +204,8 @@ export default function Assets() {
 
     const baseFilteredAssets = tenantAssets.filter(asset => {
       const matchesSearch = asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        asset.serial_number?.toLowerCase().includes(searchQuery.toLowerCase());
+        asset.serial_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        asset.assignedto?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesDomain = domainFilter === "all" || asset.assignedUsers?.some(u => u.email?.endsWith(`@${domainFilter}`));
       return matchesSearch && matchesDomain;
     });
@@ -281,20 +287,38 @@ export default function Assets() {
 
   const addAssetMutation = useMutation({
     mutationFn: async (formData: typeof assetForm) => {
-      const response = await api.post(`/tenants/${selectedTenantId}/assets`, {
-        name: formData.name,
-        type: formData.type,
-        serial_number: formData.serial_number || undefined,
-        warranty_expiry: formData.warranty_expiry || undefined,
-        license_expiry: formData.license_expiry || undefined,
-        description: formData.description || undefined,
+      const data = new FormData();
+      data.append('name', formData.name);
+      data.append('type', formData.type);
+      if (formData.serial_number) data.append('serial_number', formData.serial_number);
+      if (formData.warranty_expiry) data.append('warranty_expiry', formData.warranty_expiry);
+      if (formData.license_expiry) data.append('license_expiry', formData.license_expiry);
+      if (formData.description) data.append('description', formData.description);
+      if (formData.cost) data.append('cost', formData.cost);
+      if (formData.purchased_type) data.append('purchased_type', formData.purchased_type);
+      if (assetFile) data.append('file', assetFile);
+
+      const response = await api.post(`/tenants/${selectedTenantId}/assets`, data, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
       return response.data;
     },
     onSuccess: () => {
       toast.success("Asset created successfully");
       setIsAddAssetModalOpen(false);
-      setAssetForm({ name: "", type: "hardware", serial_number: "", warranty_expiry: "", license_expiry: "", description: "" });
+      setAssetForm({ 
+        name: "", 
+        type: "hardware", 
+        serial_number: "", 
+        warranty_expiry: "", 
+        license_expiry: "", 
+        description: "",
+        cost: "",
+        purchased_type: "Online"
+      });
+      setAssetFile(null);
       refetchAssets();
     },
     onError: (error: any) => {
@@ -321,7 +345,8 @@ export default function Assets() {
   const filteredAssets = useMemo(() => {
     return tenantAssets.filter((asset) => {
       const matchesSearch = asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        asset.serial_number?.toLowerCase().includes(searchQuery.toLowerCase());
+        asset.serial_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        asset.assignedto?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = typeFilter === "all" || asset.type.toLowerCase() === typeFilter.toLowerCase();
       
       let matchesStatus = true;
@@ -390,30 +415,39 @@ export default function Assets() {
       key: "name",
       header: "Asset Name",
       render: (asset: Asset) => (
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+        <div 
+          className="flex items-center gap-3 cursor-pointer group"
+          onClick={() => navigate(`/assets/${asset.id}`)}
+        >
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
             {asset.type === 'hardware' ? <Laptop className="w-5 h-5 text-primary" /> : <Shield className="w-5 h-5 text-primary" />}
           </div>
           <div>
-            <p className="font-semibold">{asset.name}</p>
+            <p className="font-semibold group-hover:text-primary transition-colors">{asset.name}</p>
             {asset.serial_number && <p className="text-xs text-muted-foreground">{asset.serial_number}</p>}
           </div>
         </div>
       ),
     },
     {
-      key: "assigned_to",
+      key: "assignedto",
       header: "Assigned to",
       render: (asset: Asset) => {
         const user = asset.assignedUsers?.[0];
-        if (user) {
+        if (user || asset.assignedto) {
           return (
-            <div className="flex items-center gap-2">
+            <div 
+              className={cn(
+                "flex items-center gap-2",
+                user?.id && "cursor-pointer hover:text-primary transition-colors"
+              )}
+              onClick={() => user?.id && navigate(`/tenants/${selectedTenantId}/users/${user.id}/assets`)}
+            >
               <Avatar className="h-6 w-6">
-                <AvatarImage src={user.profile_pic_url} alt={user.name} decoding="async" />
-                <AvatarFallback className="text-[10px]">{user.name.charAt(0)}</AvatarFallback>
+                <AvatarImage src={user?.profile_pic_url} alt={user?.name || asset.assignedto} decoding="async" />
+                <AvatarFallback className="text-[10px]">{(user?.name || asset.assignedto || "?").charAt(0)}</AvatarFallback>
               </Avatar>
-              <span className="text-sm font-medium">{user.name}</span>
+              <span className="text-sm font-medium">{user?.name || asset.assignedto}</span>
             </div>
           );
         }
@@ -597,9 +631,12 @@ export default function Assets() {
         const isRisky = user.account_enabled === false && hasStuff;
 
         return (
-          <div className="flex items-center gap-3">
+          <div 
+            className="flex items-center gap-3 cursor-pointer group"
+            onClick={() => navigate(`/tenants/${selectedTenantId}/users/${user.id}/assets`)}
+          >
             <div className="relative">
-              <Avatar className="h-10 w-10">
+              <Avatar className="h-10 w-10 border-2 border-transparent group-hover:border-primary/20 transition-all">
                 <AvatarImage src={user.profile_pic_url} alt={user.name} decoding="async" />
                 <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
               </Avatar>
@@ -611,7 +648,7 @@ export default function Assets() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <p className="font-semibold">{user.name}</p>
+                <p className="font-semibold group-hover:text-primary transition-colors">{user.name}</p>
                 {user.account_enabled === false && (
                   <Badge variant="destructive" className="h-4 px-1 text-[10px] uppercase font-bold">Inactive</Badge>
                 )}
@@ -1081,7 +1118,17 @@ export default function Assets() {
               variant="outline"
               onClick={() => {
                 setIsAddAssetModalOpen(false);
-                setAssetForm({ name: "", type: "hardware", serial_number: "", warranty_expiry: "", license_expiry: "", description: "" });
+                setAssetForm({ 
+                  name: "", 
+                  type: "hardware", 
+                  serial_number: "", 
+                  warranty_expiry: "", 
+                  license_expiry: "", 
+                  description: "",
+                  cost: "",
+                  purchased_type: "Online"
+                });
+                setAssetFile(null);
               }}
               disabled={addAssetMutation.isPending}
             >
@@ -1111,13 +1158,13 @@ export default function Assets() {
                 id="asset-name"
                 placeholder="e.g., Macbook Pro M1 13"
                 value={assetForm.name}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setAssetForm({ ...assetForm, name: e.target.value })}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setAssetForm(prev => ({ ...prev, name: e.target.value }))}
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="asset-type">Category *</Label>
-              <Select value={assetForm.type} onValueChange={(value: string) => setAssetForm({ ...assetForm, type: value })}>
+              <Select value={assetForm.type} onValueChange={(value: string) => setAssetForm(prev => ({ ...prev, type: value }))}>
                 <SelectTrigger id="asset-type">
                   <SelectValue />
                 </SelectTrigger>
@@ -1138,7 +1185,7 @@ export default function Assets() {
                 id="serial-number"
                 placeholder="SN-123456"
                 value={assetForm.serial_number}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setAssetForm({ ...assetForm, serial_number: e.target.value })}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setAssetForm(prev => ({ ...prev, serial_number: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
@@ -1146,21 +1193,58 @@ export default function Assets() {
               <Input
                 type="date"
                 value={assetForm.type === 'hardware' ? assetForm.warranty_expiry : assetForm.license_expiry}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setAssetForm({
-                  ...assetForm,
-                  [assetForm.type === 'hardware' ? 'warranty_expiry' : 'license_expiry']: e.target.value
-                })}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setAssetForm(prev => ({
+                  ...prev,
+                  [prev.type === 'hardware' ? 'warranty_expiry' : 'license_expiry']: e.target.value
+                }))}
               />
             </div>
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="asset-cost">Asset Cost</Label>
+              <Input
+                id="asset-cost"
+                type="number"
+                placeholder="0.00"
+                value={assetForm.cost}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setAssetForm(prev => ({ ...prev, cost: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="purchased-type">Purchased With</Label>
+              <Select value={assetForm.purchased_type} onValueChange={(value: string) => setAssetForm(prev => ({ ...prev, purchased_type: value }))}>
+                <SelectTrigger id="purchased-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Online">Online</SelectItem>
+                  <SelectItem value="Offline">Offline</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="asset-file">File Upload</Label>
+            <Input
+              id="asset-file"
+              type="file"
+              onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                if (e.target.files && e.target.files[0]) {
+                  setAssetFile(e.target.files[0]);
+                }
+              }}
+            />
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
-            <Input
-              id="description"
-              placeholder="Additional details..."
+            <SummernoteEditor
               value={assetForm.description}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setAssetForm({ ...assetForm, description: e.target.value })}
+              onChange={(content) => setAssetForm(prev => ({ ...prev, description: content }))}
+              placeholder="Additional details..."
             />
           </div>
         </div>
