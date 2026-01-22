@@ -410,6 +410,60 @@ class MicrosoftGraphService
         return 0;
     }
 
+    public function getUser(string $userId): ?array
+    {
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return null;
+        }
+
+        try {
+            $skus = $this->getSubscribedSkus();
+            $skuMap = [];
+            foreach ($skus as $sku) {
+                $skuMap[$sku['skuId']] = $sku['skuPartNumber'];
+            }
+
+            $response = Http::withToken($token)
+                ->get("https://graph.microsoft.com/v1.0/users/{$userId}?\$select=displayName,mail,userPrincipalName,id,assignedLicenses,accountEnabled,mobilePhone,businessPhones,department,officeLocation,jobTitle");
+
+            if ($response->successful()) {
+                $user = $response->json();
+
+                $licenseName = 'No License';
+                if (! empty($user['assignedLicenses'])) {
+                    $licenseNames = [];
+                    foreach ($user['assignedLicenses'] as $license) {
+                        if (isset($skuMap[$license['skuId']])) {
+                            $licenseNames[] = $this->getLicenseDisplayName($skuMap[$license['skuId']]);
+                        }
+                    }
+                    if (! empty($licenseNames)) {
+                        $licenseName = implode(', ', array_slice($licenseNames, 0, 2));
+                    }
+                }
+
+                return [
+                    'name' => $user['displayName'],
+                    'email' => $user['mail'] ?? $user['userPrincipalName'],
+                    'id' => $user['id'],
+                    'license_name' => $licenseName,
+                    'status' => $user['accountEnabled'] ? 'active' : 'inactive',
+                    'phone' => ! empty($user['businessPhones']) ? $user['businessPhones'][0] : null,
+                    'mobile_phone' => $user['mobilePhone'] ?? null,
+                    'department' => $user['department'] ?? null,
+                    'office_location' => $user['officeLocation'] ?? null,
+                    'job_title' => $user['jobTitle'] ?? null,
+                    'avatar' => '/api/tenants/user-photo?user_id='.$user['id'].'&name='.urlencode($user['displayName']).'&tenant_id='.$this->tenantId,
+                ];
+            }
+        } catch (\Exception $e) {
+            Log::error("Graph GetUser Failed: ".$e->getMessage());
+        }
+
+        return null;
+    }
+
     public function getUsers(int $limit = 5): array
     {
         // Simple implementation for user sync, kept separate from batch profile fetch

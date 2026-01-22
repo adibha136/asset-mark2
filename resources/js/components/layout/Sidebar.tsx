@@ -32,7 +32,7 @@ const navigation = [
     href: "/assets", 
     icon: Package,
     children: [
-      { name: "Asset List", href: "/assets", icon: Package },
+      { name: "Overview", href: "/assets", icon: Package },
       { name: "Asset Report", href: "/assets/report", icon: BarChart3 },
     ]
   },
@@ -109,7 +109,7 @@ export function Sidebar({
             </div>
             {(!collapsed || isMobile) && (
               <span className="text-lg font-semibold text-sidebar-foreground animate-fade-in">
-                AssetHub
+                Puppy Management
               </span>
             )}
           </div>

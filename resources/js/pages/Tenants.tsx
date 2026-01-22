@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
-import { Plus, Search, Building2, Users, Package, MoreHorizontal, Edit, Trash2, Eye, Settings, RefreshCw, ExternalLink, Info } from "lucide-react";
+import { Plus, Search, Building2, Users, Package, MoreHorizontal, Edit, Trash2, Eye, EyeOff, Settings, RefreshCw, ExternalLink, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +58,7 @@ export default function Tenants() {
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
   const [selectedTenantUsers, setSelectedTenantUsers] = useState<any[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
   const [newTenant, setNewTenant] = useState({
     name: "",
     domain: "",
@@ -326,8 +327,10 @@ export default function Tenants() {
                     <DropdownMenuItem
                       onClick={() => {
                         setSelectedTenant(tenant);
-                        setEditTenant(tenant);
+                        // Don't pre-populate the secret for security
+                        setEditTenant({ ...tenant, client_secret: "" });
                         setIsEditModalOpen(true);
+                        setShowSecret(false);
                       }}
                     >
                       <Edit className="w-4 h-4 mr-2" /> Edit
@@ -448,12 +451,22 @@ export default function Tenants() {
 
           <div className="space-y-2">
             <Label>Client Secret or Certificate</Label>
-            <Input
-              type="password"
-              placeholder="Enter client secret..."
-              value={newTenant.client_secret}
-              onChange={(e) => setNewTenant({ ...newTenant, client_secret: e.target.value })}
-            />
+            <div className="relative">
+              <Input
+                type={showSecret ? "text" : "password"}
+                placeholder="Enter client secret..."
+                value={newTenant.client_secret}
+                onChange={(e) => setNewTenant({ ...newTenant, client_secret: e.target.value })}
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowSecret(!showSecret)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -573,12 +586,22 @@ export default function Tenants() {
 
           <div className="space-y-2">
             <Label>Client Secret or Certificate</Label>
-            <Input
-              type="password"
-              placeholder="Leave blank to keep current secret"
-              value={editTenant.client_secret || ""}
-              onChange={(e) => setEditTenant({ ...editTenant, client_secret: e.target.value })}
-            />
+            <div className="relative">
+              <Input
+                type={showSecret ? "text" : "password"}
+                placeholder="Leave blank to keep current secret"
+                value={editTenant.client_secret || ""}
+                onChange={(e) => setEditTenant({ ...editTenant, client_secret: e.target.value })}
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowSecret(!showSecret)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <div className="space-y-2">

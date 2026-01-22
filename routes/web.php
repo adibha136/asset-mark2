@@ -5,6 +5,7 @@ use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\MailSettingController;
 use App\Jobs\FetchUserPhoto;
 use App\Jobs\SyncTenantDirectory;
+use App\Mail\OtpMail;
 use App\Models\Asset;
 use App\Models\AssetActivity;
 use App\Models\AssetAssignment;
@@ -16,12 +17,14 @@ use App\Models\SyncLog;
 use App\Models\SyncSetting;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\MailService;
 use App\Services\MicrosoftGraphService;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -72,9 +75,60 @@ Route::prefix('api')->group(function () {
             Log::info('Created missing admin@assetflow.com user');
         }
 
-        if (Auth::attempt($credentials)) {
-            $user = Auth::user();
-            Log::info('User logged in successfully: '.$user->email);
+        $user = User::where('email', $credentials['email'])->first();
+
+        if ($user && Hash::check($credentials['password'], $user->password)) {
+            // Generate OTP
+            $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            $user->otp_code = $otp;
+            $user->otp_expires_at = now()->addMinutes(10);
+            $user->save();
+
+            // Configure Mailer from DB settings
+            MailService::configureMailer();
+
+            // Send Email
+            try {
+                Mail::to($user->email)->send(new OtpMail($otp));
+                Log::info('OTP sent to: '.$user->email);
+            } catch (\Exception $e) {
+                Log::error('Failed to send OTP to '.$user->email.': '.$e->getMessage());
+                // For testing purposes, we might want to still allow proceeding or log the OTP
+                Log::info('TESTING OTP for '.$user->email.': '.$otp);
+            }
+
+            return response()->json([
+                'requires_otp' => true,
+                'email' => $user->email,
+            ]);
+        }
+
+        Log::warning('Failed login attempt for: '.$credentials['email']);
+
+        return response()->json(['message' => 'Invalid credentials'], 401);
+    });
+
+    Route::post('/login/verify-otp', function (Request $request) {
+        $request->validate([
+            'email' => 'required|email',
+            'otp' => 'required|string|size:6',
+        ]);
+
+        $user = User::where('email', $request->email)
+            ->where('otp_code', $request->otp)
+            ->where('otp_expires_at', '>', now())
+            ->first();
+
+        if ($user) {
+            // Clear OTP
+            $user->otp_code = null;
+            $user->otp_expires_at = null;
+            $user->save();
+
+            // Log the user in (though we are using dummy tokens, this is where it would happen)
+            Auth::login($user);
+
+            Log::info('User logged in successfully via OTP: '.$user->email);
 
             return response()->json([
                 'user' => [
@@ -87,9 +141,7 @@ Route::prefix('api')->group(function () {
             ]);
         }
 
-        Log::warning('Failed login attempt for: '.$credentials['email']);
-
-        return response()->json(['message' => 'Invalid credentials'], 401);
+        return response()->json(['message' => 'Invalid or expired OTP'], 401);
     });
 
     Route::get('/dashboard/stats', function () {
@@ -338,9 +390,9 @@ Route::prefix('api')->group(function () {
         }
 
         $assets = [
-            ['id' => '1', 'tenant_id' => '00000000-0000-0000-0000-000000000000', 'name' => 'MacBook Pro 16"', 'type' => 'Laptop', 'status' => 'active', 'location' => 'Office A', 'assignedTo' => 'John Doe', 'serialNumber' => 'MBP-2024-001', 'purchaseDate' => '2023-11-15', 'warrantyUntil' => '2025-11-15', 'description' => 'M3 Max, 64GB RAM, 2TB SSD', 'specs' => ['Processor' => 'M3 Max', 'Memory' => '64GB', 'Storage' => '2TB SSD'], 'history' => [['id' => 1, 'action' => 'Purchased', 'user' => 'Admin', 'date' => '2023-11-15']]],
-            ['id' => '2', 'tenant_id' => '00000000-0000-0000-0000-000000000000', 'name' => 'Dell Monitor 27"', 'type' => 'Monitor', 'status' => 'active', 'location' => 'Office A', 'assignedTo' => 'Jane Smith', 'serialNumber' => 'DM-2024-002', 'purchaseDate' => '2023-10-20', 'warrantyUntil' => '2026-10-20', 'description' => '4K UHD UltraSharp', 'specs' => ['Resolution' => '4K', 'Size' => '27 inch'], 'history' => [['id' => 1, 'action' => 'Purchased', 'user' => 'Admin', 'date' => '2023-10-20']]],
-            ['id' => '3', 'tenant_id' => '00000000-0000-0000-0000-000000000000', 'name' => 'iPhone 15 Pro', 'type' => 'Mobile', 'status' => 'active', 'location' => 'Remote', 'assignedTo' => 'Mike Johnson', 'serialNumber' => 'IP-2024-003', 'purchaseDate' => '2024-01-05', 'warrantyUntil' => '2025-01-05', 'description' => 'Titanium, 256GB', 'specs' => ['Model' => '15 Pro', 'Storage' => '256GB'], 'history' => [['id' => 1, 'action' => 'Purchased', 'user' => 'Admin', 'date' => '2024-01-05']]],
+            ['id' => '1', 'tenant_id' => '00000000-0000-0000-0000-000000000000', 'name' => 'MacBook Pro 16"', 'type' => 'Laptop', 'status' => 'active', 'location' => 'Office A', 'assignedTo' => 'John Doe', 'serialNumber' => 'MBP-2024-001', 'purchaseDate' => '2023-11-15', 'warrantyUntil' => '2025-11-15', 'description' => 'M3 Max, 64GB RAM, 2TB SSD', 'specs' => ['Processor' => 'M3 Max', 'Memory' => '64GB', 'Storage' => '2TB SSD'], 'history' => [['id' => 1, 'action' => 'Smart -Tech', 'user' => 'Admin', 'date' => '2023-11-15']]],
+            ['id' => '2', 'tenant_id' => '00000000-0000-0000-0000-000000000000', 'name' => 'Dell Monitor 27"', 'type' => 'Monitor', 'status' => 'active', 'location' => 'Office A', 'assignedTo' => 'Jane Smith', 'serialNumber' => 'DM-2024-002', 'purchaseDate' => '2023-10-20', 'warrantyUntil' => '2026-10-20', 'description' => '4K UHD UltraSharp', 'specs' => ['Resolution' => '4K', 'Size' => '27 inch'], 'history' => [['id' => 1, 'action' => 'Smart -Tech', 'user' => 'Admin', 'date' => '2023-10-20']]],
+            ['id' => '3', 'tenant_id' => '00000000-0000-0000-0000-000000000000', 'name' => 'iPhone 15 Pro', 'type' => 'Mobile', 'status' => 'active', 'location' => 'Remote', 'assignedTo' => 'Mike Johnson', 'serialNumber' => 'IP-2024-003', 'purchaseDate' => '2024-01-05', 'warrantyUntil' => '2025-01-05', 'description' => 'Titanium, 256GB', 'specs' => ['Model' => '15 Pro', 'Storage' => '256GB'], 'history' => [['id' => 1, 'action' => 'Smart -Tech', 'user' => 'Admin', 'date' => '2024-01-05']]],
         ];
 
         foreach ($assets as $asset) {
@@ -466,6 +518,9 @@ Route::prefix('api')->group(function () {
 
         $isManual = $request->has('is_manual') ? filter_var($request->input('is_manual'), FILTER_VALIDATE_BOOLEAN) : true;
         $fetchFromGraph = filter_var($request->input('fetch_from_graph'), FILTER_VALIDATE_BOOLEAN);
+        $tenantId = $request->input('azure_tenant_id');
+        $clientId = $request->input('client_id');
+        $clientSecret = $request->input('client_secret');
 
         if ($tenantId && $clientId && $clientSecret && $fetchFromGraph) {
             try {

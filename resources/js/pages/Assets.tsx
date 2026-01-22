@@ -810,7 +810,7 @@ export default function Assets() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Asset Management</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Assets</h1>
           <div className="flex items-center gap-2 text-muted-foreground text-sm">
             <span>Manage assets and user assignments</span>
             {selectedTenant?.last_sync_at && (
@@ -1213,14 +1213,15 @@ export default function Assets() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="purchased-type">Purchased With</Label>
+              <Label htmlFor="purchased-type">Purchased</Label>
               <Select value={assetForm.purchased_type} onValueChange={(value: string) => setAssetForm(prev => ({ ...prev, purchased_type: value }))}>
                 <SelectTrigger id="purchased-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Online">Online</SelectItem>
-                  <SelectItem value="Offline">Offline</SelectItem>
+                  <SelectItem value="Smart -Tech">Smart -Tech</SelectItem>
+                  <SelectItem value="BYOD">BYOD</SelectItem>
+                  <SelectItem value="Direct Retailer">Direct Retailer</SelectItem>
                 </SelectContent>
               </Select>
             </div>
