@@ -58,6 +58,7 @@ export default function Settings() {
     trigger_warranty_expiry: "0",
     trigger_user_inactive: "0",
     trigger_asset_assigned: "0",
+    trigger_secret_expiry: "0",
   });
   
   // Sync state
@@ -363,6 +364,22 @@ export default function Settings() {
                       const newSettings = { ...settings, trigger_asset_assigned: val ? "1" : "0" };
                       setSettings(newSettings);
                       api.post("/mail-settings", { trigger_asset_assigned: val ? "1" : "0" });
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-base">Client Secret & Certificate Expiry</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Monitor and notify every 3 months about tenant client secrets and certificates
+                    </p>
+                  </div>
+                  <Switch
+                    checked={settings.trigger_secret_expiry === "1"}
+                    onCheckedChange={(val) => {
+                      const newSettings = { ...settings, trigger_secret_expiry: val ? "1" : "0" };
+                      setSettings(newSettings);
+                      api.post("/mail-settings", { trigger_secret_expiry: val ? "1" : "0" });
                     }}
                   />
                 </div>

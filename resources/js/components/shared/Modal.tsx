@@ -20,10 +20,10 @@ interface ModalProps {
 }
 
 const sizeStyles = {
-  sm: "max-w-md",
-  md: "max-w-lg",
-  lg: "max-w-2xl",
-  xl: "max-w-4xl",
+  sm: "w-[95vw] sm:max-w-md",
+  md: "w-[95vw] sm:max-w-lg",
+  lg: "w-[95vw] sm:max-w-2xl",
+  xl: "w-[95vw] sm:max-w-4xl",
 };
 
 export function Modal({
@@ -37,15 +37,19 @@ export function Modal({
 }: ModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn("rounded-2xl", sizeStyles[size])}>
-        <DialogHeader>
-          <DialogTitle className="text-xl">{title}</DialogTitle>
-          {description && (
-            <DialogDescription>{description}</DialogDescription>
-          )}
-        </DialogHeader>
-        <div className="py-4">{children}</div>
-        {footer && <DialogFooter>{footer}</DialogFooter>}
+      <DialogContent className={cn("rounded-2xl p-0 overflow-hidden", sizeStyles[size])}>
+        <div className="flex flex-col max-h-[90vh]">
+          <DialogHeader className="p-6 pb-2">
+            <DialogTitle className="text-xl">{title}</DialogTitle>
+            {description && (
+              <DialogDescription>{description}</DialogDescription>
+            )}
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto p-6 pt-2">
+            {children}
+          </div>
+          {footer && <DialogFooter className="p-6 pt-2 border-t mt-auto">{footer}</DialogFooter>}
+        </div>
       </DialogContent>
     </Dialog>
   );

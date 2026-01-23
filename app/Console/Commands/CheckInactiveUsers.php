@@ -16,7 +16,8 @@ class CheckInactiveUsers extends Command
     public function handle()
     {
         // For this example, we'll check users who were updated to inactive in the last 24 hours
-        $inactiveUsers = DirectoryUser::where('account_enabled', false)
+        $inactiveUsers = DirectoryUser::with('tenant')
+            ->where('account_enabled', false)
             ->where('updated_at', '>=', Carbon::now()->subDay())
             ->get();
 

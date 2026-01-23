@@ -78,9 +78,8 @@ export function TopNav({ sidebarCollapsed, onMenuClick, isMobile }: TopNavProps)
     return () => clearTimeout(timer);
   }, [searchQuery, handleSearch]);
 
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
+  const handleLogout = async () => {
+    await logout();
   };
 
   const hasResults = results && (results.assets.length > 0 || results.tenants.length > 0 || results.users.length > 0);
@@ -227,20 +226,20 @@ export function TopNav({ sidebarCollapsed, onMenuClick, isMobile }: TopNavProps)
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <div className="max-h-64 overflow-y-auto">
-              <DropdownMenuItem className="flex flex-col items-start gap-1 py-3">
-                <span className="font-medium">New asset added</span>
-                <span className="text-xs text-muted-foreground">MacBook Pro 16" was registered</span>
-                <span className="text-xs text-muted-foreground">2 minutes ago</span>
+              <DropdownMenuItem className="group flex flex-col items-start gap-1 py-3 focus:bg-accent">
+                <span className="font-medium group-focus:text-accent-foreground">New asset added</span>
+                <span className="text-xs text-muted-foreground group-focus:text-accent-foreground/70">MacBook Pro 16" was registered</span>
+                <span className="text-xs text-muted-foreground group-focus:text-accent-foreground/70">2 minutes ago</span>
               </DropdownMenuItem>
-              <DropdownMenuItem className="flex flex-col items-start gap-1 py-3">
-                <span className="font-medium">Sync completed</span>
-                <span className="text-xs text-muted-foreground">Directory sync finished successfully</span>
-                <span className="text-xs text-muted-foreground">1 hour ago</span>
+              <DropdownMenuItem className="group flex flex-col items-start gap-1 py-3 focus:bg-accent">
+                <span className="font-medium group-focus:text-accent-foreground">Sync completed</span>
+                <span className="text-xs text-muted-foreground group-focus:text-accent-foreground/70">Directory sync finished successfully</span>
+                <span className="text-xs text-muted-foreground group-focus:text-accent-foreground/70">1 hour ago</span>
               </DropdownMenuItem>
-              <DropdownMenuItem className="flex flex-col items-start gap-1 py-3">
-                <span className="font-medium">User role updated</span>
-                <span className="text-xs text-muted-foreground">John Doe promoted to Admin</span>
-                <span className="text-xs text-muted-foreground">3 hours ago</span>
+              <DropdownMenuItem className="group flex flex-col items-start gap-1 py-3 focus:bg-accent">
+                <span className="font-medium group-focus:text-accent-foreground">User role updated</span>
+                <span className="text-xs text-muted-foreground group-focus:text-accent-foreground/70">John Doe promoted to Admin</span>
+                <span className="text-xs text-muted-foreground group-focus:text-accent-foreground/70">3 hours ago</span>
               </DropdownMenuItem>
             </div>
           </DropdownMenuContent>

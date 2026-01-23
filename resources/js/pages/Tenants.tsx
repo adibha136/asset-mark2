@@ -291,12 +291,12 @@ export default function Tenants() {
                     {tenant.name ? tenant.name.slice(0, 2).toUpperCase() : "??"}
                   </AvatarFallback>
                 </Avatar>
-                <div>
-                  <h3 className="font-semibold">{tenant.name}</h3>
-                  <div className="flex flex-col">
-                    <p className="text-sm text-muted-foreground">{tenant.domain}</p>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold truncate">{tenant.name}</h3>
+                  <div className="flex flex-col min-w-0">
+                    <p className="text-sm text-muted-foreground truncate" title={tenant.domain}>{tenant.domain}</p>
                     {tenant.redirect_url && (
-                      <p className="text-xs text-primary truncate max-w-[200px]" title={tenant.redirect_url}>
+                      <p className="text-xs text-primary truncate" title={tenant.redirect_url}>
                         {tenant.redirect_url}
                       </p>
                     )}
@@ -352,31 +352,30 @@ export default function Tenants() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 mb-4">
-              <Badge variant={statusVariants[tenant.status] || "muted"} className="capitalize">
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <Badge variant={statusVariants[tenant.status] || "muted"} className="capitalize shrink-0">
                 {tenant.status}
               </Badge>
               {tenant.auto_directory_sync && (
-                <Badge variant="info" className="gap-1">
+                <Badge variant="info" className="gap-1 shrink-0">
                   <Settings className="w-3 h-3" /> Auto Sync
                 </Badge>
               )}
               {tenant.fetch_from_graph && (
-                <Badge variant="muted">Graph API</Badge>
+                <Badge variant="muted" className="shrink-0">Graph API</Badge>
               )}
             </div>
 
-            <div className="flex items-center gap-6 pt-4 border-t border-border">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-4 border-t border-border">
               <div className="flex items-center gap-2">
-                <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 <span className="text-xs font-bold text-foreground">{tenant.total_users_count || 0}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Users</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider whitespace-nowrap">Total Users</span>
               </div>
-              <div className="w-px h-3 bg-border" />
               <div className="flex items-center gap-2">
-                <Package className="w-3.5 h-3.5 text-muted-foreground" />
+                <Package className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 <span className="text-xs font-bold text-foreground">{tenant.assigned_assets_count || 0}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Assigned Assets</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider whitespace-nowrap">Assigned Assets</span>
               </div>
             </div>
           </div>

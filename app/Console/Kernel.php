@@ -11,6 +11,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\SyncDirectoryUsers::class,
         \App\Console\Commands\CheckWarrantyExpiry::class,
         \App\Console\Commands\CheckInactiveUsers::class,
+        \App\Console\Commands\CheckSecretExpiry::class,
     ];
 
     protected function schedule(Schedule $schedule)
@@ -25,6 +26,10 @@ class Kernel extends ConsoleKernel
 
         $schedule->command('notifications:check-inactive')
             ->hourly()
+            ->withoutOverlapping();
+
+        $schedule->command('notifications:check-secret-expiry')
+            ->quarterly()
             ->withoutOverlapping();
     }
 

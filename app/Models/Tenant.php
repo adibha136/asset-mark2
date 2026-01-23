@@ -30,6 +30,8 @@ class Tenant extends Model
         'license_name',
         'license_count',
         'last_sync_at',
+        'client_secret_expires_at',
+        'certificate_expires_at',
     ];
 
     protected $casts = [
@@ -40,6 +42,8 @@ class Tenant extends Model
         'assetsCount' => 'integer',
         'license_count' => 'integer',
         'last_sync_at' => 'datetime',
+        'client_secret_expires_at' => 'datetime',
+        'certificate_expires_at' => 'datetime',
     ];
 
     public function syncWithGraph()
@@ -62,6 +66,8 @@ class Tenant extends Model
                     'license_name' => $details['license_name'] ?? $this->license_name,
                     'license_count' => $details['license_count'] ?? $this->license_count,
                     'assetsCount' => $details['assets_count'] ?? $this->assetsCount,
+                    'client_secret_expires_at' => $details['client_secret_expires_at'] ?? $this->client_secret_expires_at,
+                    'certificate_expires_at' => $details['certificate_expires_at'] ?? $this->certificate_expires_at,
                     'last_sync_at' => now(),
                 ];
 

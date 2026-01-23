@@ -144,6 +144,14 @@ Route::prefix('api')->group(function () {
         return response()->json(['message' => 'Invalid or expired OTP'], 401);
     });
 
+    Route::post('/logout', function (Request $request) {
+        Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return response()->json(['message' => 'Logged out successfully']);
+    });
+
     Route::get('/dashboard/stats', function () {
         $totalAssetsCount = Asset::count();
         $activeTenantsCount = Tenant::where('status', 'active')->count();

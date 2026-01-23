@@ -473,7 +473,7 @@ export default function UsersRoles() {
         }
       >
         <div className="grid gap-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Name</Label>
               <Input value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} placeholder="Full name" />
@@ -483,7 +483,7 @@ export default function UsersRoles() {
               <Input value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} placeholder="email@example.com" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Password</Label>
               <Input type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} placeholder="••••••••" />
@@ -493,7 +493,7 @@ export default function UsersRoles() {
               <Input value={newUser.phone} onChange={e => setNewUser({...newUser, phone: e.target.value})} placeholder="+1 (555) 000-0000" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Role</Label>
               <Select value={newUser.role} onValueChange={v => setNewUser({...newUser, role: v})}>

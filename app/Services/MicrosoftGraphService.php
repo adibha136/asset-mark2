@@ -313,12 +313,31 @@ class MicrosoftGraphService
         return null;
     }
 
+    public function getApplicationDetails(): array
+    {
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return [];
+        }
+        try {
+            $response = Http::withToken($token)->get("https://graph.microsoft.com/v1.0/applications/{$this->clientId}");
+            if ($response->successful()) {
+                return $response->json() ?? [];
+            }
+        } catch (\Exception $e) {
+            Log::error('Graph getApplicationDetails Error: '.$e->getMessage());
+        }
+
+        return [];
+    }
+
     public function getAllDetails(): array
     {
         $org = $this->getOrganizationDetails();
         $skus = $this->getSubscribedSkus();
         $userCount = $this->getUserCount();
         $deviceCount = $this->getDeviceCount();
+        $app = $this->getApplicationDetails();
 
         $primaryLicense = null;
         if (! empty($skus)) {
@@ -332,6 +351,35 @@ class MicrosoftGraphService
             }
         }
 
+        // Find the expiry date for the current secret
+        $secretExpiresAt = null;
+        if (! empty($app['passwordCredentials'])) {
+            foreach ($app['passwordCredentials'] as $cred) {
+                // Since we don't know the exact secret value's ID, we take the one that is closest to expiring or currently valid
+                // In a real scenario, we might want to match by hint if available
+                $endDateTime = $cred['endDateTime'] ?? null;
+                if ($endDateTime) {
+                    $expiry = \Carbon\Carbon::parse($endDateTime);
+                    if (! $secretExpiresAt || $expiry->lt($secretExpiresAt)) {
+                        $secretExpiresAt = $expiry;
+                    }
+                }
+            }
+        }
+
+        $certExpiresAt = null;
+        if (! empty($app['keyCredentials'])) {
+            foreach ($app['keyCredentials'] as $cred) {
+                $endDateTime = $cred['endDateTime'] ?? null;
+                if ($endDateTime) {
+                    $expiry = \Carbon\Carbon::parse($endDateTime);
+                    if (! $certExpiresAt || $expiry->lt($certExpiresAt)) {
+                        $certExpiresAt = $expiry;
+                    }
+                }
+            }
+        }
+
         return [
             'name' => $org['displayName'] ?? null,
             'domain' => $org['verifiedDomains'][0]['name'] ?? null,
@@ -339,6 +387,8 @@ class MicrosoftGraphService
             'license_count' => $primaryLicense ? ($primaryLicense['prepaidUnits']['enabled'] ?? 0) : 0,
             'users_count' => $userCount,
             'assets_count' => $deviceCount,
+            'client_secret_expires_at' => $secretExpiresAt,
+            'certificate_expires_at' => $certExpiresAt,
         ];
     }
 
