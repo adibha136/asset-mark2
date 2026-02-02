@@ -471,16 +471,16 @@ export default function Assets() {
 
     // Apply Styles to Specific Cells
     // Title
-    worksheet['A1'].s = titleStyle;
+    if (worksheet['A1']) worksheet['A1'].s = titleStyle;
     worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }]; // Merge A1-F1
 
     // Subtitle / Info
     const infoStyle = { font: { italic: true, sz: 10 }, alignment: { vertical: "center" } };
-    worksheet['A2'].s = infoStyle;
-    worksheet['B2'].s = { ...infoStyle, font: { ...infoStyle.font, bold: true } };
+    if (worksheet['A2']) worksheet['A2'].s = infoStyle;
+    if (worksheet['B2']) worksheet['B2'].s = { ...infoStyle, font: { ...infoStyle.font, bold: true } };
 
-    // Overview Statistics Header
-    worksheet['A4'].s = { font: { bold: true, color: { rgb: "334155" } } };
+    // Overview Statistics Header (Row 5)
+    if (worksheet['A5']) worksheet['A5'].s = { font: { bold: true, color: { rgb: "334155" } } };
 
     // KPI row (Row 6 & 7)
     const kpiCols = ['A', 'B', 'C', 'D', 'E'];
@@ -490,7 +490,7 @@ export default function Assets() {
     });
 
     // Data Records Label
-    worksheet['A9'].s = { font: { bold: true, sz: 12, color: { rgb: "1E293B" } } };
+    if (worksheet['A9']) worksheet['A9'].s = { font: { bold: true, sz: 12, color: { rgb: "1E293B" } } };
 
     // Main Table Headers (Row 11)
     for (let c = range.s.c; c <= range.e.c; c++) {
