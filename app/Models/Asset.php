@@ -23,6 +23,11 @@ class Asset extends Model
         'cost',
         'purchased_type',
         'file_path',
+        'ram',
+        'graphics_card',
+        'processor',
+        'keyboard_details',
+        'mouse_details',
     ];
 
     protected $appends = ['assignedto', 'location'];

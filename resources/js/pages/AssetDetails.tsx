@@ -96,6 +96,11 @@ interface Asset {
   warrantyUntil: string;
   cost: string;
   description: string;
+  ram?: string;
+  graphics_card?: string;
+  processor?: string;
+  keyboard_details?: string;
+  mouse_details?: string;
   documents: AssetDocument[];
   history: AssetActivity[];
 }
@@ -119,6 +124,11 @@ const AssetDetails = () => {
     warranty_expiry: "",
     cost: "",
     assignedTo: "",
+    ram: "",
+    graphics_card: "",
+    processor: "",
+    keyboard_details: "",
+    mouse_details: "",
   });
 
   const [statusForm, setStatusForm] = useState({
@@ -201,6 +211,11 @@ const AssetDetails = () => {
         warranty_expiry: asset.warrantyUntil || "",
         cost: asset.cost || "",
         assignedTo: asset.assignedTo || "Unassigned",
+        ram: asset.ram || "",
+        graphics_card: asset.graphics_card || "",
+        processor: asset.processor || "",
+        keyboard_details: asset.keyboard_details || "",
+        mouse_details: asset.mouse_details || "",
       });
       setStatusForm({
         status: asset.status || "",
@@ -391,6 +406,57 @@ const AssetDetails = () => {
                 onChange={(e) => setEditForm(prev => ({ ...prev, cost: e.target.value }))}
               />
             </div>
+
+            {editForm.type === 'hardware' && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="processor">Processor</Label>
+                  <Input
+                    id="processor"
+                    value={editForm.processor}
+                    onChange={(e) => setEditForm({ ...editForm, processor: e.target.value })}
+                    placeholder="e.g. Intel Core i7"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ram">RAM</Label>
+                  <Input
+                    id="ram"
+                    value={editForm.ram}
+                    onChange={(e) => setEditForm({ ...editForm, ram: e.target.value })}
+                    placeholder="e.g. 16GB"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="graphics_card">Graphics Card</Label>
+                  <Input
+                    id="graphics_card"
+                    value={editForm.graphics_card}
+                    onChange={(e) => setEditForm({ ...editForm, graphics_card: e.target.value })}
+                    placeholder="e.g. NVIDIA RTX 3060"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="keyboard_details">Keyboard Details</Label>
+                  <Input
+                    id="keyboard_details"
+                    value={editForm.keyboard_details}
+                    onChange={(e) => setEditForm({ ...editForm, keyboard_details: e.target.value })}
+                    placeholder="e.g. Mechanical Keyboard"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mouse_details">Mouse Details</Label>
+                  <Input
+                    id="mouse_details"
+                    value={editForm.mouse_details}
+                    onChange={(e) => setEditForm({ ...editForm, mouse_details: e.target.value })}
+                    placeholder="e.g. Wireless Mouse"
+                  />
+                </div>
+              </>
+            )}
+
             <div className="space-y-2 col-span-2">
               <Label htmlFor="description">Description</Label>
               <SummernoteEditor
@@ -600,6 +666,35 @@ const AssetDetails = () => {
             <TabsContent value="specs" className="mt-4">
               <Card className="glass-card border-none shadow-none">
                 <CardContent className="pt-6">
+                  {asset.type === 'hardware' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between text-sm border-b pb-2">
+                          <span className="text-muted-foreground">Processor:</span>
+                          <span className="font-medium">{asset.processor || "N/A"}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm border-b pb-2">
+                          <span className="text-muted-foreground">RAM:</span>
+                          <span className="font-medium">{asset.ram || "N/A"}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm border-b pb-2">
+                          <span className="text-muted-foreground">Graphics Card:</span>
+                          <span className="font-medium">{asset.graphics_card || "N/A"}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between text-sm border-b pb-2">
+                          <span className="text-muted-foreground">Keyboard:</span>
+                          <span className="font-medium">{asset.keyboard_details || "N/A"}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm border-b pb-2">
+                          <span className="text-muted-foreground">Mouse:</span>
+                          <span className="font-medium">{asset.mouse_details || "N/A"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {asset.description && (
                     <div className="prose prose-sm max-w-none dark:prose-invert">
                       <div dangerouslySetInnerHTML={{ __html: asset.description }} />

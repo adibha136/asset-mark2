@@ -492,13 +492,12 @@ Route::prefix('api')->group(function () {
                 'warrantyUntil' => $dbAsset->warranty_expiry ? $dbAsset->warranty_expiry->format('Y-m-d') : '',
                 'cost' => $dbAsset->cost,
                 'description' => $dbAsset->description ?? '',
+                'ram' => $dbAsset->ram,
+                'graphics_card' => $dbAsset->graphics_card,
+                'processor' => $dbAsset->processor,
+                'keyboard_details' => $dbAsset->keyboard_details,
+                'mouse_details' => $dbAsset->mouse_details,
                 'documents' => $documents,
-                'specs' => [
-                    'Processor' => 'M3 Max',
-                    'Memory' => '64GB',
-                    'Storage' => '2TB SSD',
-                    'Display' => '16-inch Liquid Retina XDR',
-                ],
                 'history' => $dbAsset->activities->map(function ($activity) {
                     return [
                         'id' => $activity->id,
@@ -539,6 +538,11 @@ Route::prefix('api')->group(function () {
             'description' => 'nullable|string',
             'warranty_expiry' => 'nullable|date',
             'cost' => 'nullable|numeric',
+            'ram' => 'nullable|string',
+            'graphics_card' => 'nullable|string',
+            'processor' => 'nullable|string',
+            'keyboard_details' => 'nullable|string',
+            'mouse_details' => 'nullable|string',
         ]);
 
         $asset->update($validated);
@@ -1111,6 +1115,11 @@ Route::prefix('api')->group(function () {
             'cost' => 'nullable|numeric',
             'purchased_type' => 'nullable|string',
             'file' => 'nullable|file|max:10240', // 10MB max
+            'ram' => 'nullable|string',
+            'graphics_card' => 'nullable|string',
+            'processor' => 'nullable|string',
+            'keyboard_details' => 'nullable|string',
+            'mouse_details' => 'nullable|string',
         ]);
 
         $filePath = null;
@@ -1130,6 +1139,11 @@ Route::prefix('api')->group(function () {
             'purchased_type' => $validated['purchased_type'] ?? null,
             'file_path' => $filePath,
             'status' => 'available',
+            'ram' => $validated['ram'] ?? null,
+            'graphics_card' => $validated['graphics_card'] ?? null,
+            'processor' => $validated['processor'] ?? null,
+            'keyboard_details' => $validated['keyboard_details'] ?? null,
+            'mouse_details' => $validated['mouse_details'] ?? null,
         ]);
 
         AssetActivity::create([
@@ -1324,6 +1338,11 @@ Route::prefix('api')->group(function () {
             'description' => 'nullable|string',
             'cost' => 'nullable|numeric',
             'purchased_type' => 'nullable|string',
+            'ram' => 'nullable|string',
+            'graphics_card' => 'nullable|string',
+            'processor' => 'nullable|string',
+            'keyboard_details' => 'nullable|string',
+            'mouse_details' => 'nullable|string',
         ]);
 
         // 1. Create the asset
@@ -1338,6 +1357,11 @@ Route::prefix('api')->group(function () {
             'cost' => $validated['cost'] ?? null,
             'purchased_type' => $validated['purchased_type'] ?? null,
             'status' => 'assigned',
+            'ram' => $validated['ram'] ?? null,
+            'graphics_card' => $validated['graphics_card'] ?? null,
+            'processor' => $validated['processor'] ?? null,
+            'keyboard_details' => $validated['keyboard_details'] ?? null,
+            'mouse_details' => $validated['mouse_details'] ?? null,
         ]);
 
         // 2. Assign it

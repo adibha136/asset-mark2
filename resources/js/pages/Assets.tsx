@@ -18,7 +18,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Modal, ConfirmModal } from "@/components/shared/Modal";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import * as XLSX from "xlsx";
+import XLSX from "xlsx-js-style";
 import {
   Select,
   SelectContent,
@@ -137,6 +137,11 @@ export default function Assets() {
     description: "",
     cost: "",
     purchased_type: "Online",
+    ram: "",
+    graphics_card: "",
+    processor: "",
+    keyboard_details: "",
+    mouse_details: "",
   });
   const [assetFile, setAssetFile] = useState<File | null>(null);
 
@@ -309,6 +314,11 @@ export default function Assets() {
       if (formData.description) data.append('description', formData.description);
       if (formData.cost) data.append('cost', formData.cost);
       if (formData.purchased_type) data.append('purchased_type', formData.purchased_type);
+      if (formData.ram) data.append('ram', formData.ram);
+      if (formData.graphics_card) data.append('graphics_card', formData.graphics_card);
+      if (formData.processor) data.append('processor', formData.processor);
+      if (formData.keyboard_details) data.append('keyboard_details', formData.keyboard_details);
+      if (formData.mouse_details) data.append('mouse_details', formData.mouse_details);
       if (assetFile) data.append('file', assetFile);
 
       const response = await api.post(`/tenants/${selectedTenantId}/assets`, data, {
@@ -329,7 +339,12 @@ export default function Assets() {
         license_expiry: "", 
         description: "",
         cost: "",
-        purchased_type: "Online"
+        purchased_type: "Online",
+        ram: "",
+        graphics_card: "",
+        processor: "",
+        keyboard_details: "",
+        mouse_details: "",
       });
       setAssetFile(null);
       refetchAssets();
@@ -356,14 +371,37 @@ export default function Assets() {
   });
 
   const exportToExcel = () => {
+    const workbook = XLSX.utils.book_new();
+    const sheetName = viewMode === 'assets' ? "Assets Dashboard" : "Users Dashboard";
+    
+    // 1. Prepare Summary / KPI Data
+    const summaryData = [
+      ["ASSET MANAGEMENT DASHBOARD"],
+      ["Tenant Name:", selectedTenant?.name || "All Tenants"],
+      ["Report Date:", format(new Date(), "yyyy-MM-dd HH:mm")],
+      [],
+      ["OVERVIEW STATISTICS"],
+      ["Total Users", "Active Users", "Inactive Users", "Licensed", "Unlicensed"],
+      [
+        displayStats.total_users, 
+        displayStats.active_users, 
+        displayStats.inactive_users, 
+        displayStats.used_licenses, 
+        displayStats.no_license_count
+      ],
+      [],
+      ["DATA RECORDS"],
+    ];
+
+    // 2. Prepare Main Data
+    let mainData: any[] = [];
     if (viewMode === 'assets') {
-      const exportData = filteredAssets.map(asset => {
+      mainData = filteredAssets.map(asset => {
         const assignedUsers = asset.assignedUsers || [];
         return {
           "Asset Name": asset.name,
           "Type": asset.type,
           "Status": asset.status,
-          "Tenant": selectedTenant?.name || "-",
           "Serial Number": asset.serial_number || "-",
           "Assigned To": assignedUsers.map(u => u.name).join(", ") || asset.assignedto || "Unassigned",
           "Assigned To Email": assignedUsers.map(u => u.email).join(", ") || "-",
@@ -375,30 +413,145 @@ export default function Assets() {
           "Description": asset.description || "-"
         };
       });
-
-      const worksheet = XLSX.utils.json_to_sheet(exportData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Assets");
-      XLSX.writeFile(workbook, `Assets_Export_${selectedTenant?.name || "Tenant"}_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
     } else {
-      const exportData = filteredUsers.map(user => ({
+      mainData = filteredUsers.map(user => ({
         "Name": user.name,
         "Email": user.email,
         "Phone": user.phone || user.mobile_phone || "-",
         "Job Title": user.job_title || "-",
         "Department": user.department || "-",
-        "Tenant": selectedTenant?.name || "-",
         "License": user.license_name || "No License",
-        "Status": user.account_enabled ? "Active" : "Inactive",
-        "Assets Count": user.assets_count || 0,
-        "Asset Details": user.assets?.map(a => `${a.name} (${a.type}${a.serial_number ? `: ${a.serial_number}` : ''})`).join("; ") || "No assets assigned"
+        "Status": user.account_enabled ? "Active" : "Inactive"
       }));
-
-      const worksheet = XLSX.utils.json_to_sheet(exportData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
-      XLSX.writeFile(workbook, `Users_Export_${selectedTenant?.name || "Tenant"}_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
     }
+
+    // 3. Combine into one sheet
+    const worksheet = XLSX.utils.aoa_to_sheet(summaryData);
+    XLSX.utils.sheet_add_json(worksheet, mainData, { origin: "A11" });
+
+    // 4. APPLY STYLES
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:Z100');
+    
+    // Style Definitions
+    const titleStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" }, sz: 16 },
+      fill: { fgColor: { rgb: "1E293B" } }, // Slate-800
+      alignment: { horizontal: "center", vertical: "center" }
+    };
+
+    const headerStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: "475569" } }, // Slate-600
+      alignment: { horizontal: "center" },
+      border: {
+        top: { style: "thin", color: { rgb: "000000" } },
+        bottom: { style: "thin", color: { rgb: "000000" } }
+      }
+    };
+
+    const kpiHeaderStyle = {
+      font: { bold: true, color: { rgb: "1E293B" } },
+      fill: { fgColor: { rgb: "F1F5F9" } }, // Slate-100
+      alignment: { horizontal: "center" },
+      border: {
+        top: { style: "thin", color: { rgb: "CBD5E1" } },
+        bottom: { style: "thin", color: { rgb: "CBD5E1" } },
+        left: { style: "thin", color: { rgb: "CBD5E1" } },
+        right: { style: "thin", color: { rgb: "CBD5E1" } }
+      }
+    };
+
+    const kpiValueStyle = {
+      font: { bold: true, sz: 12 },
+      alignment: { horizontal: "center" },
+      border: {
+        bottom: { style: "medium", color: { rgb: "3B82F6" } } // Blue-500
+      }
+    };
+
+    // Apply Styles to Specific Cells
+    // Title
+    worksheet['A1'].s = titleStyle;
+    worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }]; // Merge A1-F1
+
+    // Subtitle / Info
+    const infoStyle = { font: { italic: true, sz: 10 }, alignment: { vertical: "center" } };
+    worksheet['A2'].s = infoStyle;
+    worksheet['B2'].s = { ...infoStyle, font: { ...infoStyle.font, bold: true } };
+
+    // Overview Statistics Header
+    worksheet['A4'].s = { font: { bold: true, color: { rgb: "334155" } } };
+
+    // KPI row (Row 6 & 7)
+    const kpiCols = ['A', 'B', 'C', 'D', 'E'];
+    kpiCols.forEach(col => {
+      if (worksheet[`${col}6`]) worksheet[`${col}6`].s = kpiHeaderStyle;
+      if (worksheet[`${col}7`]) worksheet[`${col}7`].s = kpiValueStyle;
+    });
+
+    // Data Records Label
+    worksheet['A9'].s = { font: { bold: true, sz: 12, color: { rgb: "1E293B" } } };
+
+    // Main Table Headers (Row 11)
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 10, c });
+      if (worksheet[cellAddress]) {
+        worksheet[cellAddress].s = headerStyle;
+      }
+    }
+
+    // Apply Auto-Alignment and Borders to Data Rows
+    const dataCellStyle = {
+      alignment: { vertical: "center", horizontal: "left" },
+      border: {
+        top: { style: "thin", color: { rgb: "E2E8F0" } },
+        bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+        left: { style: "thin", color: { rgb: "E2E8F0" } },
+        right: { style: "thin", color: { rgb: "E2E8F0" } }
+      }
+    };
+
+    for (let r = 11; r <= range.e.r; r++) {
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cellAddress = XLSX.utils.encode_cell({ r, c });
+        if (worksheet[cellAddress]) {
+          // Center align certain columns like Status and Type
+          const isCenterCol = [1, 2].includes(c); 
+          worksheet[cellAddress].s = {
+            ...dataCellStyle,
+            alignment: { ...dataCellStyle.alignment, horizontal: isCenterCol ? "center" : "left" }
+          };
+        }
+      }
+    }
+
+    // Enable AutoFilter for the data range
+    const tableRange = XLSX.utils.encode_range({
+      s: { r: 10, c: range.s.c },
+      e: { r: range.e.r, c: range.e.c }
+    });
+    worksheet['!autofilter'] = { ref: tableRange };
+
+    // Set Column Widths
+    worksheet['!cols'] = [
+      { wch: 25 }, // A: Asset Name
+      { wch: 15 }, // B: Type
+      { wch: 15 }, // C: Status
+      { wch: 20 }, // D: Serial
+      { wch: 25 }, // E: Assigned To
+      { wch: 30 }, // F: Email
+      { wch: 20 }, // G
+      { wch: 20 }, // H
+      { wch: 20 }, // I
+      { wch: 40 }, // J
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+    const fileName = viewMode === 'assets' 
+      ? `Dashboard_Assets_${selectedTenant?.name || "Tenant"}_${format(new Date(), "yyyy-MM-dd")}.xlsx`
+      : `Dashboard_Users_${selectedTenant?.name || "Tenant"}_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+    
+    XLSX.writeFile(workbook, fileName);
   };
 
   const filteredAssets = useMemo(() => {
@@ -1312,6 +1465,61 @@ export default function Assets() {
               </Select>
             </div>
           </div>
+
+          {assetForm.type === 'hardware' && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="ram">RAM</Label>
+                  <Input
+                    id="ram"
+                    placeholder="e.g. 16GB"
+                    value={assetForm.ram}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setAssetForm(prev => ({ ...prev, ram: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="processor">Processor</Label>
+                  <Input
+                    id="processor"
+                    placeholder="e.g. i7-12700K"
+                    value={assetForm.processor}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setAssetForm(prev => ({ ...prev, processor: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="graphics-card">Graphics Card</Label>
+                  <Input
+                    id="graphics-card"
+                    placeholder="e.g. RTX 3060"
+                    value={assetForm.graphics_card}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setAssetForm(prev => ({ ...prev, graphics_card: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="keyboard-details">Keyboard Details</Label>
+                  <Input
+                    id="keyboard-details"
+                    placeholder="e.g. Logitech MX Keys"
+                    value={assetForm.keyboard_details}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setAssetForm(prev => ({ ...prev, keyboard_details: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mouse-details">Mouse Details</Label>
+                  <Input
+                    id="mouse-details"
+                    placeholder="e.g. Logitech MX Master 3S"
+                    value={assetForm.mouse_details}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setAssetForm(prev => ({ ...prev, mouse_details: e.target.value }))}
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="asset-file">File Upload</Label>

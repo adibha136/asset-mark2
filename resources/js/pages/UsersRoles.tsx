@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import * as XLSX from "xlsx";
+import XLSX from "xlsx-js-style";
 import { format } from "date-fns";
 import {
   Select,
@@ -205,20 +205,90 @@ export default function UsersRoles() {
   });
 
   const exportToExcel = () => {
+    const workbook = XLSX.utils.book_new();
+    
+    // 1. Header
+    const summaryData = [
+      ["ADMIN USERS DIRECTORY"],
+      ["Generated on:", format(new Date(), "yyyy-MM-dd HH:mm")],
+      [],
+      ["USER RECORDS"],
+    ];
+
+    // 2. Data
     const exportData = filteredUsers.map(user => ({
       "Name": user.name,
       "Email": user.email,
       "Phone": user.phone || "-",
       "Role": user.role,
       "Status": user.status,
-      "Tenant": user.tenant || "-",
       "License": user.license || "-",
-      "Asset Details": user.asset_details || "-",
       "Last Active": user.lastActive || "Now"
     }));
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet(summaryData);
+    XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A6" });
+
+    // 3. Styles
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:Z100');
+    
+    const titleStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" }, sz: 16 },
+      fill: { fgColor: { rgb: "1E293B" } },
+      alignment: { horizontal: "center", vertical: "center" }
+    };
+
+    const headerStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: "475569" } },
+      alignment: { horizontal: "center" }
+    };
+
+    worksheet['A1'].s = titleStyle;
+    worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
+
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 5, c });
+      if (worksheet[cellAddress]) worksheet[cellAddress].s = headerStyle;
+    }
+
+    // Apply Auto-Alignment and Borders to Data Rows
+    const dataCellStyle = {
+      alignment: { vertical: "center", horizontal: "left" },
+      border: {
+        top: { style: "thin", color: { rgb: "E2E8F0" } },
+        bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+        left: { style: "thin", color: { rgb: "E2E8F0" } },
+        right: { style: "thin", color: { rgb: "E2E8F0" } }
+      }
+    };
+
+    for (let r = 6; r <= range.e.r; r++) {
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cellAddress = XLSX.utils.encode_cell({ r, c });
+        if (worksheet[cellAddress]) {
+          // Center align Role and Status
+          const isCenterCol = [3, 4].includes(c); 
+          worksheet[cellAddress].s = {
+            ...dataCellStyle,
+            alignment: { ...dataCellStyle.alignment, horizontal: isCenterCol ? "center" : "left" }
+          };
+        }
+      }
+    }
+
+    // Enable AutoFilter
+    const tableRange = XLSX.utils.encode_range({
+      s: { r: 5, c: range.s.c },
+      e: { r: range.e.r, c: range.e.c }
+    });
+    worksheet['!autofilter'] = { ref: tableRange };
+
+    worksheet['!cols'] = [
+      { wch: 25 }, { wch: 30 }, { wch: 15 }, 
+      { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 20 }
+    ];
+
     XLSX.utils.book_append_sheet(workbook, worksheet, "Admin Users");
     XLSX.writeFile(workbook, `Admin_Users_Export_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
   };

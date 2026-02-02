@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import * as XLSX from "xlsx";
+import XLSX from "xlsx-js-style";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -117,6 +117,17 @@ export default function AssetReport() {
   ];
 
   const exportToExcel = () => {
+    const workbook = XLSX.utils.book_new();
+    
+    // 1. Header
+    const summaryData = [
+      ["ASSET INVENTORY REPORT"],
+      ["Report Date:", format(new Date(), "yyyy-MM-dd HH:mm")],
+      [],
+      ["ASSET RECORDS"],
+    ];
+
+    // 2. Data
     const exportData = filteredAssets.map(asset => {
       const assignedUsers = asset.assignedUsers || [];
       return {
@@ -124,7 +135,6 @@ export default function AssetReport() {
         "Asset Type": asset.type,
         "Status": asset.status,
         "Serial Number": asset.serial_number || "-",
-        "Tenant": selectedTenant?.name || "-",
         "Assigned To": assignedUsers.map(u => u.name).join(", ") || asset.assignedto || "Unassigned",
         "User Email": assignedUsers.map(u => u.email).join(", ") || "-",
         "User Phone": assignedUsers.map(u => u.phone || u.mobile_phone || "-").join(", ") || "-",
@@ -134,8 +144,70 @@ export default function AssetReport() {
       };
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet(summaryData);
+    XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A6" });
+
+    // 3. Styles
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:Z100');
+    
+    const titleStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" }, sz: 16 },
+      fill: { fgColor: { rgb: "1E293B" } },
+      alignment: { horizontal: "center", vertical: "center" }
+    };
+
+    const headerStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: "475569" } },
+      alignment: { horizontal: "center" }
+    };
+
+    worksheet['A1'].s = titleStyle;
+    worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 9 } }];
+
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 5, c });
+      if (worksheet[cellAddress]) worksheet[cellAddress].s = headerStyle;
+    }
+
+    // Apply Auto-Alignment and Borders to Data Rows
+    const dataCellStyle = {
+      alignment: { vertical: "center", horizontal: "left" },
+      border: {
+        top: { style: "thin", color: { rgb: "E2E8F0" } },
+        bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+        left: { style: "thin", color: { rgb: "E2E8F0" } },
+        right: { style: "thin", color: { rgb: "E2E8F0" } }
+      }
+    };
+
+    for (let r = 6; r <= range.e.r; r++) {
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cellAddress = XLSX.utils.encode_cell({ r, c });
+        if (worksheet[cellAddress]) {
+          // Center align Type, Status, and Dates
+          const isCenterCol = [1, 2, 8, 9].includes(c); 
+          worksheet[cellAddress].s = {
+            ...dataCellStyle,
+            alignment: { ...dataCellStyle.alignment, horizontal: isCenterCol ? "center" : "left" }
+          };
+        }
+      }
+    }
+
+    // Enable AutoFilter
+    const tableRange = XLSX.utils.encode_range({
+      s: { r: 5, c: range.s.c },
+      e: { r: range.e.r, c: range.e.c }
+    });
+    worksheet['!autofilter'] = { ref: tableRange };
+
+    worksheet['!cols'] = [
+      { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, 
+      { wch: 25 }, { wch: 30 }, { wch: 20 }, { wch: 20 },
+      { wch: 15 }, { wch: 15 }
+    ];
+
     XLSX.utils.book_append_sheet(workbook, worksheet, "Assets");
     XLSX.writeFile(workbook, `Asset_Report_${selectedTenant?.name || "All"}.xlsx`);
   };

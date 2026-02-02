@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/shared/DataTable";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import * as XLSX from "xlsx";
+import XLSX from "xlsx-js-style";
 import { format } from "date-fns";
 import {
   DropdownMenu,
@@ -232,6 +232,17 @@ export default function TenantUsers() {
   ];
 
   const exportToExcel = () => {
+    const workbook = XLSX.utils.book_new();
+    
+    // 1. Dashboard Header
+    const summaryData = [
+      ["TENANT USERS DIRECTORY"],
+      ["Report Date:", format(new Date(), "yyyy-MM-dd HH:mm")],
+      [],
+      ["USER RECORDS"],
+    ];
+
+    // 2. Main Data
     const exportData = filteredUsers.map(user => ({
       "Name": user.name,
       "Email": user.email,
@@ -239,14 +250,74 @@ export default function TenantUsers() {
       "Job Title": user.job_title || "-",
       "Department": user.department || "-",
       "Office": user.office_location || "-",
-      "Tenant": tenant?.name || "-",
       "License": user.license_name || "-",
-      "Status": user.status === 'active' ? "Active" : "Inactive",
-      "Assigned Assets": user.assets?.map(a => `${a.name} (${a.type}${a.serial_number ? `: ${a.serial_number}` : ''})`).join("; ") || "No assets assigned"
+      "Status": user.status === 'active' ? "Active" : "Inactive"
     }));
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet(summaryData);
+    XLSX.utils.sheet_add_json(worksheet, exportData, { origin: "A6" });
+
+    // 3. Styles
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:Z100');
+    
+    const titleStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" }, sz: 16 },
+      fill: { fgColor: { rgb: "1E293B" } },
+      alignment: { horizontal: "center", vertical: "center" }
+    };
+
+    const headerStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: "475569" } },
+      alignment: { horizontal: "center" }
+    };
+
+    worksheet['A1'].s = titleStyle;
+    worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
+
+    // Apply table headers style (Row 6)
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 5, c });
+      if (worksheet[cellAddress]) worksheet[cellAddress].s = headerStyle;
+    }
+
+    // Apply Auto-Alignment and Borders to Data Rows
+    const dataCellStyle = {
+      alignment: { vertical: "center", horizontal: "left" },
+      border: {
+        top: { style: "thin", color: { rgb: "E2E8F0" } },
+        bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+        left: { style: "thin", color: { rgb: "E2E8F0" } },
+        right: { style: "thin", color: { rgb: "E2E8F0" } }
+      }
+    };
+
+    for (let r = 6; r <= range.e.r; r++) {
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cellAddress = XLSX.utils.encode_cell({ r, c });
+        if (worksheet[cellAddress]) {
+          // Center align Status column
+          const isCenterCol = c === 7; 
+          worksheet[cellAddress].s = {
+            ...dataCellStyle,
+            alignment: { ...dataCellStyle.alignment, horizontal: isCenterCol ? "center" : "left" }
+          };
+        }
+      }
+    }
+
+    // Enable AutoFilter
+    const tableRange = XLSX.utils.encode_range({
+      s: { r: 5, c: range.s.c },
+      e: { r: range.e.r, c: range.e.c }
+    });
+    worksheet['!autofilter'] = { ref: tableRange };
+
+    worksheet['!cols'] = [
+      { wch: 25 }, { wch: 30 }, { wch: 15 }, { wch: 20 }, 
+      { wch: 20 }, { wch: 20 }, { wch: 25 }, { wch: 15 }
+    ];
+
     XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
     XLSX.writeFile(workbook, `Users_Export_${tenant?.name || "Tenant"}_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
   };
