@@ -1,0 +1,1 @@
+<?php include 'vendor/autoload.php'; $app = include 'bootstrap/app.php'; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); echo json_encode(App\Models\Tenant::where('name', 'like', '%%Integrity%%')-; ?>  
