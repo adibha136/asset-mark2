@@ -1,0 +1,21 @@
+{
+  "providers": {
+    "lm-studio": {
+      "mode": "direct",
+      "type": "openai-compatible",
+      "baseUrl": "http://192.168.1.29:1234/v1",
+      "apiKey": "not-needed",
+      "models": {
+        "llama3-70b": {
+          "name": "qwen3.5-9b",
+          "displayName": "qwen3.5-9b",
+          "capabilities": [],
+          "options": {
+            "temperature": 0.7,
+            "maxOutputTokens": 4096
+          }
+        }
+      }
+    }
+  }
+}

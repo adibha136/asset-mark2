@@ -1,21 +1,25 @@
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard,
   Package,
-  Building2,
-  RefreshCw,
-  Users,
-  ClipboardCheck,
-  Settings,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Settings,
   HelpCircle,
   LogOut,
-  ChevronDown,
-  BarChart3,
+  LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
+import { useBusiness } from "@/contexts/BusinessContext";
+
+// menu types
+interface MenuItem {
+  name: string;
+  path: string;
+  icon: LucideIcon;
+  children?: { name: string; path: string; icon: LucideIcon }[];
+}
 
 interface SidebarProps {
   collapsed: boolean;
@@ -25,63 +29,65 @@ interface SidebarProps {
   onMobileClose: () => void;
 }
 
-const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { 
-    name: "Assets", 
-    href: "/assets", 
-    icon: Package,
-    children: [
-      { name: "Overview", href: "/assets", icon: Package },
-      { name: "Asset Report", href: "/assets/report", icon: BarChart3 },
-    ]
-  },
-  { name: "Tenants", href: "/tenants", icon: Building2 },
-  { name: "Users & Roles", href: "/users", icon: Users },
-  { name: "Checklists", href: "/checklists", icon: ClipboardCheck },
-];
-
-const bottomNav = [
-  { name: "Settings", href: "/settings", icon: Settings },
-  { name: "Help", href: "/help", icon: HelpCircle },
-];
-
-export function Sidebar({ 
-  collapsed, 
-  onToggle, 
-  isMobile, 
-  mobileMenuOpen, 
-  onMobileClose 
+export function Sidebar({
+  collapsed,
+  onToggle,
+  isMobile,
+  mobileMenuOpen,
+  onMobileClose,
 }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { activeBusiness } = useBusiness();
   const [openMenus, setOpenMenus] = useState<string[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [bottomItems, setBottomItems] = useState<MenuItem[]>([]);
 
-  // Automatically open submenus if a child is active
+  // Dynamically load menu for the active business
   useEffect(() => {
-    navigation.forEach(item => {
-      if (item.children?.some(child => location.pathname === child.href)) {
+    const load = async () => {
+      if (activeBusiness.id === "smarttech") {
+        const mod = await import("@/modules/smarttech/menu");
+        setMenuItems(mod.default);
+        setBottomItems(mod.bottomMenu);
+      } else {
+        const mod = await import("@/modules/nextelecom/menu");
+        setMenuItems(mod.default);
+        setBottomItems(mod.bottomMenu);
+      }
+    };
+    load();
+    setOpenMenus([]); // collapse submenus on switch
+  }, [activeBusiness.id]);
+
+  // Auto-open submenus on route match
+  useEffect(() => {
+    menuItems.forEach((item) => {
+      if (item.children?.some((child) => location.pathname.startsWith(child.path))) {
         if (!openMenus.includes(item.name)) {
-          setOpenMenus(prev => [...prev, item.name]);
+          setOpenMenus((prev) => [...prev, item.name]);
         }
       }
     });
-  }, [location.pathname]);
+  }, [location.pathname, menuItems]);
 
   const toggleMenu = (name: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setOpenMenus(prev => 
-      prev.includes(name) 
-        ? prev.filter(i => i !== name) 
-        : [...prev, name]
+    setOpenMenus((prev) =>
+      prev.includes(name) ? prev.filter((i) => i !== name) : [...prev, name]
     );
   };
 
-  const handleLogout = () => {
-    // In a real app, you would clear tokens/session here
-    navigate("/login");
-  };
+  const handleLogout = () => navigate("/login");
+
+  // Business accent colour for active items  
+  const accentRing =
+    activeBusiness.id === "nextelecom" ? "ring-sky-500/20" : "ring-primary/20";
+  const activeText =
+    activeBusiness.id === "nextelecom" ? "text-sky-500" : "text-primary";
+  const activeBg =
+    activeBusiness.id === "nextelecom" ? "bg-sky-500/10" : "bg-primary/10";
 
   return (
     <>
@@ -96,39 +102,46 @@ export function Sidebar({
       <aside
         className={cn(
           "fixed left-0 top-0 z-50 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300 ease-in-out flex flex-col",
-          !isMobile 
-            ? (collapsed ? "w-16" : "w-64") 
-            : (mobileMenuOpen ? "w-64 translate-x-0" : "w-64 -translate-x-full")
+          !isMobile
+            ? collapsed
+              ? "w-16"
+              : "w-64"
+            : mobileMenuOpen
+            ? "w-64 translate-x-0"
+            : "w-64 -translate-x-full"
         )}
       >
-        {/* Logo */}
+        {/* Logo / Brand */}
         <div className="flex items-center h-16 px-4 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-              <Package className="w-5 h-5 text-primary-foreground" />
+            <div
+              className={`w-8 h-8 rounded-lg bg-gradient-to-br ${activeBusiness.gradient} flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-md transition-all duration-300`}
+            >
+              {activeBusiness.label}
             </div>
             {(!collapsed || isMobile) && (
-              <span className="text-lg font-semibold text-sidebar-foreground animate-fade-in">
-                Puppy Management
+              <span className="text-sm font-semibold text-sidebar-foreground truncate animate-in fade-in duration-200">
+                {activeBusiness.name}
               </span>
             )}
           </div>
         </div>
 
-        {/* Navigation */}
+        {/* Main Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          <div className="mb-2">
-            {(!collapsed || isMobile) && (
-              <span className="px-3 text-xs font-medium uppercase tracking-wider text-sidebar-muted">
-                Main Menu
-              </span>
-            )}
-          </div>
-          {navigation.map((item) => {
+          {(!collapsed || isMobile) && (
+            <span className="px-3 text-[10px] font-medium uppercase tracking-widest text-sidebar-muted block mb-2">
+              Main Menu
+            </span>
+          )}
+
+          {menuItems.map((item) => {
             const hasChildren = item.children && item.children.length > 0;
             const isMenuOpen = openMenus.includes(item.name);
-            const isChildActive = item.children?.some(child => location.pathname === child.href);
-            const isParentActive = location.pathname === item.href;
+            const isChildActive = item.children?.some((c) =>
+              location.pathname.startsWith(c.path)
+            );
+            const isParentActive = location.pathname === item.path;
             const isActive = isParentActive || isChildActive;
 
             if (hasChildren && !collapsed) {
@@ -142,22 +155,31 @@ export function Sidebar({
                     )}
                   >
                     <div className="flex items-center gap-3">
-                      <item.icon className={cn("w-5 h-5 flex-shrink-0", isActive && "text-primary")} />
+                      <item.icon
+                        className={cn("w-5 h-5 flex-shrink-0", isActive && activeText)}
+                      />
                       <span>{item.name}</span>
                     </div>
-                    <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", isMenuOpen && "rotate-180")} />
+                    <ChevronDown
+                      className={cn(
+                        "w-4 h-4 transition-transform duration-200",
+                        isMenuOpen && "rotate-180"
+                      )}
+                    />
                   </button>
                   {isMenuOpen && (
                     <div className="ml-4 pl-4 border-l border-sidebar-border space-y-1 mt-1 animate-in slide-in-from-top-1 duration-200">
                       {item.children?.map((child) => {
-                        const isChildLinkActive = location.pathname === child.href;
+                        const isChildLinkActive = location.pathname.startsWith(child.path);
                         return (
                           <NavLink
                             key={child.name}
-                            to={child.href}
+                            to={child.path}
                             className={cn(
                               "sidebar-item text-sm py-2 px-3 h-9",
-                              isChildLinkActive ? "bg-primary/10 text-primary font-medium" : "text-sidebar-muted hover:text-sidebar-foreground"
+                              isChildLinkActive
+                                ? `${activeBg} ${activeText} font-medium`
+                                : "text-sidebar-muted hover:text-sidebar-foreground"
                             )}
                           >
                             {child.icon && <child.icon className="w-4 h-4 mr-2" />}
@@ -174,14 +196,16 @@ export function Sidebar({
             return (
               <NavLink
                 key={item.name}
-                to={item.href || "#"}
+                to={item.path}
                 className={cn(
                   "sidebar-item",
                   isActive && "sidebar-item-active",
-                  (collapsed && !isMobile) && "justify-center px-0"
+                  collapsed && !isMobile && "justify-center px-0"
                 )}
               >
-                <item.icon className={cn("w-5 h-5 flex-shrink-0", isActive && "text-primary")} />
+                <item.icon
+                  className={cn("w-5 h-5 flex-shrink-0", isActive && activeText)}
+                />
                 {(!collapsed || isMobile) && <span>{item.name}</span>}
               </NavLink>
             );
@@ -190,16 +214,16 @@ export function Sidebar({
 
         {/* Bottom Navigation */}
         <div className="px-3 py-4 border-t border-sidebar-border space-y-1">
-          {bottomNav.map((item) => {
-            const isActive = location.pathname === item.href;
+          {bottomItems.map((item) => {
+            const isActive = location.pathname === item.path;
             return (
               <NavLink
                 key={item.name}
-                to={item.href}
+                to={item.path}
                 className={cn(
                   "sidebar-item",
                   isActive && "sidebar-item-active",
-                  (collapsed && !isMobile) && "justify-center px-0"
+                  collapsed && !isMobile && "justify-center px-0"
                 )}
               >
                 <item.icon className="w-5 h-5 flex-shrink-0" />
@@ -211,7 +235,7 @@ export function Sidebar({
             onClick={handleLogout}
             className={cn(
               "sidebar-item w-full text-destructive/80 hover:text-destructive hover:bg-destructive/10 cursor-pointer",
-              (collapsed && !isMobile) && "justify-center px-0"
+              collapsed && !isMobile && "justify-center px-0"
             )}
           >
             <LogOut className="w-5 h-5 flex-shrink-0" />
@@ -219,7 +243,7 @@ export function Sidebar({
           </div>
         </div>
 
-        {/* Collapse Toggle - Only on desktop */}
+        {/* Collapse Toggle - Desktop only */}
         {!isMobile && (
           <button
             onClick={onToggle}

@@ -24,6 +24,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
@@ -35,6 +36,31 @@ Route::prefix('api')->group(function () {
     Route::get('/mail-settings', [MailSettingController::class, 'index']);
     Route::post('/mail-settings', [MailSettingController::class, 'update']);
     Route::post('/mail-settings/test', [MailSettingController::class, 'test']);
+
+    Route::post('/nextelecom/proxy-auth', function (Request $request) {
+        $type = $request->input('authType', 'standard');
+        $url = $type === 'onetime' 
+            ? 'https://api.virtualplatform.com.au/v2/onetime/auth'
+            : 'https://api.virtualplatform.com.au/v2/auth';
+
+        try {
+            $response = Http::withHeaders([
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ])->post($url, [
+                'username' => $request->input('username'),
+                'password' => $request->input('password'),
+                'mfapin'   => $request->input('mfapin', '0000'),
+            ]);
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Proxy Error',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    });
 
     Route::get('/checklist-templates', [ChecklistController::class, 'index']);
     Route::post('/checklist-templates', [ChecklistController::class, 'store']);
