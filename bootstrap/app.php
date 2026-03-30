@@ -24,6 +24,8 @@ return Application::configure(basePath: dirname(__DIR__))
             '/api/otp/*',
             '/api/leads/*',
         ]);
+
+        $middleware->append(\App\Http\Middleware\SetTenantContext::class);
     })
     ->withSchedule(function ($schedule) {
         $schedule->command('sync:directory-users')

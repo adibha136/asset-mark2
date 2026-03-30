@@ -13,6 +13,7 @@ use App\Models\Asset;
 use App\Models\AssetActivity;
 use App\Models\AssetAssignment;
 use App\Models\AssetDocument;
+use App\Models\Customer;
 use App\Models\DirectoryUser;
 use App\Models\Role;
 use App\Models\RolePermission;
@@ -126,14 +127,35 @@ Route::prefix('api')->group(function () {
             return response()->json(['error' => 'Missing authorization token'], 401);
         }
 
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
+        if (!$tenantId) {
+            $tenantId = Tenant::first()?->id;
+        }
+
+        if (!$tenantId) {
+            Log::warning('Nextelecom: No tenant ID found - skipping database sync');
+        }
+
         if ($mockMode) {
+            $mockCustomers = [
+                ['id' => 1, 'name' => 'Acme Corporation', 'phone' => '03 9999 1111', 'email' => 'contact@acme.com.au', 'type' => 'business', 'abn' => '12345678901'],
+                ['id' => 2, 'name' => 'Tech Solutions Pty Ltd', 'phone' => '03 8888 2222', 'email' => 'sales@techsol.com.au', 'type' => 'business', 'abn' => '98765432101'],
+                ['id' => 3, 'name' => 'John Smith', 'phone' => '0412 555 333', 'email' => 'john@example.com', 'type' => 'person', 'abn' => null],
+            ];
+            
+            if ($tenantId) {
+                try {
+                    Customer::syncFromApi($mockCustomers, $tenantId);
+                    Log::info('Nextelecom: Customers synced', ['count' => count($mockCustomers), 'tenant' => $tenantId]);
+                } catch (\Exception $e) {
+                    Log::error('Nextelecom: Sync failed', ['error' => $e->getMessage()]);
+                }
+            }
+            
             return response()->json([
                 'data' => [
-                    'customers' => [
-                        ['id' => 1, 'name' => 'Acme Corporation', 'phone' => '03 9999 1111', 'email' => 'contact@acme.com.au', 'type' => 'business', 'abn' => '12345678901'],
-                        ['id' => 2, 'name' => 'Tech Solutions Pty Ltd', 'phone' => '03 8888 2222', 'email' => 'sales@techsol.com.au', 'type' => 'business', 'abn' => '98765432101'],
-                        ['id' => 3, 'name' => 'John Smith', 'phone' => '0412 555 333', 'email' => 'john@example.com', 'type' => 'person', 'abn' => null],
-                    ]
+                    'customers' => $mockCustomers
                 ],
                 'status' => 'OK'
             ], 200);
@@ -145,6 +167,30 @@ Route::prefix('api')->group(function () {
                 'Content-Type' => 'application/json',
                 'Authorization' => $token,
             ])->get('https://api.virtualplatform.com.au/v2/wholesale/customers');
+
+            if ($response->ok()) {
+                $data = $response->json();
+                $customers = [];
+                
+                if (is_array($data)) {
+                    $customers = $data;
+                } elseif (is_array($data['data']['customers'] ?? null)) {
+                    $customers = $data['data']['customers'];
+                } elseif (is_array($data['customers'] ?? null)) {
+                    $customers = $data['customers'];
+                } elseif (is_array($data['data'] ?? null)) {
+                    $customers = $data['data'];
+                }
+                
+                if (!empty($customers) && $tenantId) {
+                    try {
+                        Customer::syncFromApi($customers, $tenantId);
+                        Log::info('Nextelecom: Customers synced from API', ['count' => count($customers), 'tenant' => $tenantId]);
+                    } catch (\Exception $e) {
+                        Log::error('Nextelecom: Sync failed', ['error' => $e->getMessage()]);
+                    }
+                }
+            }
 
             return response()->json($response->json(), $response->status());
         } catch (\Exception $e) {
@@ -175,6 +221,312 @@ Route::prefix('api')->group(function () {
                 'message' => $e->getMessage()
             ], 500);
         }
+    });
+
+    Route::get('/nextelecom/proxy-customer-detail', function (Request $request) use ($mockMode) {
+        $customerId = $request->input('customerID');
+        
+        if (!$customerId) {
+            return response()->json(['error' => 'Customer ID is required'], 400);
+        }
+
+        $token = $request->header('Authorization');
+        if (!$token) {
+            return response()->json(['error' => 'Missing authorization token'], 401);
+        }
+
+        if ($mockMode) {
+            return response()->json([
+                'data' => [
+                    'id' => $customerId,
+                    'name' => 'Mock Customer',
+                    'abn' => '12345678901',
+                    'phone' => '0400000000',
+                    'email' => 'customer@example.com',
+                    'type' => 'business',
+                    'address' => [
+                        'streetNumber' => '123',
+                        'streetName' => 'Main',
+                        'streetType' => 'ST',
+                        'suburb' => 'Brisbane',
+                        'state' => 'QLD',
+                        'postcode' => '4000'
+                    ],
+                    'individuals' => [
+                        [
+                            'firstName' => 'John',
+                            'lastName' => 'Doe',
+                            'email' => 'john@example.com',
+                            'phone' => '0400111111',
+                            'position' => 'Director'
+                        ]
+                    ]
+                ]
+            ], 200);
+        }
+
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Authorization' => $token,
+            ])->get("https://api.virtualplatform.com.au/v2/wholesale/customers/{$customerId}");
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to fetch customer details',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    });
+
+    Route::get('/nextelecom/proxy-customer-metrics', function (Request $request) use ($mockMode) {
+        $customerId = $request->input('customerID');
+        
+        if (!$customerId) {
+            return response()->json(['error' => 'Customer ID is required'], 400);
+        }
+
+        $token = $request->header('Authorization');
+        if (!$token) {
+            return response()->json(['error' => 'Missing authorization token'], 401);
+        }
+
+        if ($mockMode) {
+            return response()->json([
+                'data' => [
+                    'id' => $customerId,
+                    'bandwidth' => 100,
+                    'uptime' => 99.9,
+                    'activeConnections' => 5,
+                    'totalDataUsage' => 2500
+                ]
+            ], 200);
+        }
+
+        try {
+            $fullUrl = "https://api.virtualplatform.com.au/v2/wholesale/customers/{$customerId}/metrics";
+            Log::info('Metrics API Request', [
+                'customerId' => $customerId,
+                'url' => $fullUrl,
+                'token' => substr($token, 0, 50) . '...'
+            ]);
+
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Authorization' => $token,
+            ])->get($fullUrl);
+
+            $responseBody = $response->json();
+            Log::info('Metrics API Response', [
+                'customerId' => $customerId,
+                'status' => $response->status(),
+                'headers' => $response->headers(),
+                'body' => $responseBody
+            ]);
+
+            return response()->json($responseBody, $response->status());
+        } catch (\Exception $e) {
+            Log::error('Metrics API Error', [
+                'customerId' => $customerId,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json([
+                'error' => 'Failed to fetch metrics',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    });
+
+    Route::get('/nextelecom/proxy-customer-data', function (Request $request) use ($mockMode) {
+        $customerId = $request->input('customerID');
+        
+        if (!$customerId) {
+            return response()->json(['error' => 'Customer ID is required'], 400);
+        }
+
+        $token = $request->header('Authorization');
+        if (!$token) {
+            return response()->json(['error' => 'Missing authorization token'], 401);
+        }
+
+        if ($mockMode) {
+            return response()->json([
+                'data' => [
+                    'id' => $customerId,
+                    'recordCount' => 1000,
+                    'lastUpdate' => '2026-03-30T14:15:53Z'
+                ]
+            ], 200);
+        }
+
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Authorization' => $token,
+            ])->get("https://api.virtualplatform.com.au/v2/wholesale/customers/{$customerId}/data");
+
+            Log::info('Data API Response', [
+                'customerId' => $customerId,
+                'status' => $response->status(),
+                'body' => $response->json()
+            ]);
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            Log::error('Data API Error', [
+                'customerId' => $customerId,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json([
+                'error' => 'Failed to fetch data',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    });
+
+    Route::get('/nextelecom/proxy-customer-users', function (Request $request) use ($mockMode) {
+        $customerId = $request->input('customerID');
+        
+        if (!$customerId) {
+            return response()->json(['error' => 'Customer ID is required'], 400);
+        }
+
+        $token = $request->header('Authorization');
+        if (!$token) {
+            return response()->json(['error' => 'Missing authorization token'], 401);
+        }
+
+        if ($mockMode) {
+            return response()->json([
+                'data' => [
+                    [
+                        'id' => 'USR_001',
+                        'name' => 'John Doe',
+                        'email' => 'john@example.com',
+                        'role' => 'Admin',
+                        'status' => 'active'
+                    ],
+                    [
+                        'id' => 'USR_002',
+                        'name' => 'Jane Smith',
+                        'email' => 'jane@example.com',
+                        'role' => 'User',
+                        'status' => 'active'
+                    ]
+                ]
+            ], 200);
+        }
+
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Authorization' => $token,
+            ])->get("https://api.virtualplatform.com.au/v2/wholesale/customers/{$customerId}/users");
+
+            Log::info('Users API Response', [
+                'customerId' => $customerId,
+                'status' => $response->status(),
+                'body' => $response->json()
+            ]);
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            Log::error('Users API Error', [
+                'customerId' => $customerId,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json([
+                'error' => 'Failed to fetch users',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    });
+
+    Route::get('/nextelecom/proxy-customer-integration', function (Request $request) use ($mockMode) {
+        $customerId = $request->input('customerID');
+        
+        if (!$customerId) {
+            return response()->json(['error' => 'Customer ID is required'], 400);
+        }
+
+        $token = $request->header('Authorization');
+        if (!$token) {
+            return response()->json(['error' => 'Missing authorization token'], 401);
+        }
+
+        if ($mockMode) {
+            return response()->json([
+                'data' => [
+                    'id' => $customerId,
+                    'xero' => [
+                        'enabled' => true,
+                        'lastSync' => '2026-03-30T10:00:00Z',
+                        'status' => 'synced'
+                    ]
+                ]
+            ], 200);
+        }
+
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Authorization' => $token,
+            ])->get("https://api.virtualplatform.com.au/v2/wholesale/customers/{$customerId}/integration");
+
+            Log::info('Integration API Response', [
+                'customerId' => $customerId,
+                'status' => $response->status(),
+                'body' => $response->json()
+            ]);
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            Log::error('Integration API Error', [
+                'customerId' => $customerId,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json([
+                'error' => 'Failed to fetch integration',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    });
+
+    Route::get('/nextelecom/customers', function (Request $request) {
+        $tenantId = app('tenant.id');
+        $customers = Customer::where('tenant_id', $tenantId)
+            ->select('id', 'external_id', 'name', 'email', 'phone', 'type', 'abn', 'street_number', 'street_name', 'street_type', 'suburb', 'state', 'postcode', 'sub_number', 'is_reseller', 'integration_create', 'status')
+            ->get()
+            ->map(function ($customer) {
+                return [
+                    'id' => $customer->external_id ?? $customer->id,
+                    'name' => $customer->name,
+                    'email' => $customer->email,
+                    'phone' => $customer->phone,
+                    'type' => $customer->type,
+                    'abn' => $customer->abn,
+                    'address' => [
+                        'streetNumber' => $customer->street_number,
+                        'streetName' => $customer->street_name,
+                        'streetType' => $customer->street_type,
+                        'suburb' => $customer->suburb,
+                        'state' => $customer->state,
+                        'postcode' => $customer->postcode,
+                        'subNumber' => $customer->sub_number,
+                    ],
+                    'isReseller' => (bool) $customer->is_reseller,
+                    'integrationCreate' => (bool) $customer->integration_create,
+                    'status' => $customer->status,
+                ];
+            });
+
+        return response()->json([
+            'data' => [
+                'customers' => $customers
+            ],
+            'status' => 'OK'
+        ], 200);
     });
 
     Route::get('/nextelecom/proxy-connectivity', function (Request $request) use ($mockMode) {
@@ -262,6 +614,27 @@ Route::prefix('api')->group(function () {
         }
     });
 
+    Route::get('/nextelecom/proxy-outages-debug', function (Request $request) use ($mockMode) {
+        $token = $request->header('Authorization');
+        if (!$token) {
+            return response()->json(['error' => 'Missing authorization token'], 401);
+        }
+
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Authorization' => $token,
+            ])->get('https://api.virtualplatform.com.au/v2/connectivity/outages');
+
+            return response()->json([
+                'status' => $response->status(),
+                'raw_response' => $response->json()
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    });
+
     Route::get('/nextelecom/proxy-outages', function (Request $request) use ($mockMode) {
         $token = $request->header('Authorization');
         if (!$token) {
@@ -272,8 +645,63 @@ Route::prefix('api')->group(function () {
             return response()->json([
                 'data' => [
                     'outages' => [
-                        ['id' => 'OUT_001', 'title' => 'Planned Maintenance - Sydney', 'status' => 'scheduled', 'startTime' => '2026-04-05T02:00:00Z', 'durationHours' => 4],
-                        ['id' => 'OUT_002', 'title' => 'Network Upgrade - Melbourne', 'status' => 'in_progress', 'startTime' => '2026-03-30T10:00:00Z', 'durationHours' => 2],
+                        [
+                            'id' => 'OUT_001',
+                            'category' => 'NBN',
+                            'type' => 'planned',
+                            'title' => 'Planned Maintenance - Sydney',
+                            'reason' => 'Planned Maintenance - Database upgrade',
+                            'description' => 'Database infrastructure upgrade',
+                            'status' => 'scheduled',
+                            'severity' => 'medium',
+                            'location' => 'Sydney, NSW',
+                            'plannedStart' => '2026-04-05T02:00:00Z',
+                            'plannedEnd' => '2026-04-05T06:00:00Z',
+                            'startTime' => '2026-04-05T02:00:00Z',
+                            'endTime' => '2026-04-05T06:00:00Z',
+                            'affectedAssets' => 45,
+                            'expectedResolution' => '2026-04-05 06:00 AM',
+                            'rootCause' => 'Scheduled hardware maintenance and database optimization',
+                            'affectedServices' => ['Internet', 'VoIP', 'Cloud Services'],
+                            'updates' => [
+                                ['timestamp' => '2026-03-30 10:30 AM', 'message' => 'Maintenance scheduled for this weekend'],
+                                ['timestamp' => '2026-03-29 02:00 PM', 'message' => 'All customers notified via email']
+                            ],
+                            'supportContact' => [
+                                'ticketNumber' => 'TKT-2026-001234',
+                                'email' => 'support@nextelecom.com.au',
+                                'phone' => '1300 TELECOM'
+                            ]
+                        ],
+                        [
+                            'id' => 'OUT_002',
+                            'category' => 'NBN',
+                            'type' => 'unplanned',
+                            'title' => 'Network Upgrade - Melbourne',
+                            'reason' => 'Equipment failure in primary network node',
+                            'description' => 'Core network equipment replacement',
+                            'status' => 'active',
+                            'severity' => 'high',
+                            'location' => 'Melbourne, VIC',
+                            'plannedStart' => '2026-03-30T10:00:00Z',
+                            'plannedEnd' => null,
+                            'startTime' => '2026-03-30T10:00:00Z',
+                            'endTime' => null,
+                            'affectedAssets' => 128,
+                            'expectedResolution' => '2026-03-30 04:00 PM',
+                            'rootCause' => 'Equipment failure in primary network node - replacement in progress',
+                            'affectedServices' => ['Internet', 'MPLS'],
+                            'updates' => [
+                                ['timestamp' => '2026-03-30 12:45 PM', 'message' => 'Redundant systems activated, service partially restored'],
+                                ['timestamp' => '2026-03-30 11:30 AM', 'message' => 'Primary equipment failure detected'],
+                                ['timestamp' => '2026-03-30 10:05 AM', 'message' => 'Outage event initiated']
+                            ],
+                            'supportContact' => [
+                                'ticketNumber' => 'TKT-2026-001235',
+                                'email' => 'support@nextelecom.com.au',
+                                'phone' => '1300 TELECOM'
+                            ]
+                        ]
                     ]
                 ]
             ], 200);
@@ -283,8 +711,79 @@ Route::prefix('api')->group(function () {
             $response = Http::timeout(30)->withHeaders([
                 'Accept' => 'application/json',
                 'Authorization' => $token,
-            ])->get('https://api.virtualplatform.com.au/v2/wholesale/notification/outages');
+            ])->get('https://api.virtualplatform.com.au/v2/connectivity/outages');
 
+            if ($response->ok()) {
+                $data = $response->json();
+                
+                $outages = $data['data']['outages'] ?? $data['outages'] ?? $data['data'] ?? [];
+                
+                if (is_array($outages)) {
+                    $outages = array_map(function($outage) {
+                        if (!isset($outage['reason'])) {
+                            // Check in details section first
+                            if (isset($outage['details']['reason'])) {
+                                $outage['reason'] = $outage['details']['reason'];
+                            } elseif (isset($outage['details']) && is_array($outage['details'])) {
+                                // Try to find reason in various detail fields
+                                if (isset($outage['details']['cause'])) {
+                                    $outage['reason'] = $outage['details']['cause'];
+                                } elseif (isset($outage['details']['impact'])) {
+                                    $outage['reason'] = $outage['details']['impact'];
+                                } elseif (isset($outage['details']['description'])) {
+                                    $outage['reason'] = $outage['details']['description'];
+                                }
+                            }
+                            
+                            // Fallback to other fields if not in details
+                            if (!isset($outage['reason'])) {
+                                if (isset($outage['rootCause'])) {
+                                    $outage['reason'] = $outage['rootCause'];
+                                } elseif (isset($outage['description'])) {
+                                    $outage['reason'] = $outage['description'];
+                                } elseif (isset($outage['title'])) {
+                                    $outage['reason'] = $outage['title'];
+                                } elseif (isset($outage['summary'])) {
+                                    $outage['reason'] = $outage['summary'];
+                                } elseif (isset($outage['cause'])) {
+                                    $outage['reason'] = $outage['cause'];
+                                } elseif (isset($outage['impact'])) {
+                                    $outage['reason'] = $outage['impact'];
+                                } else {
+                                    $outage['reason'] = 'No reason provided';
+                                }
+                            }
+                        }
+                        
+                        if (!isset($outage['plannedStart']) && isset($outage['startTime'])) {
+                            $outage['plannedStart'] = $outage['startTime'];
+                        }
+                        if (!isset($outage['plannedStart']) && isset($outage['start_time'])) {
+                            $outage['plannedStart'] = $outage['start_time'];
+                        }
+                        
+                        if (!isset($outage['plannedEnd']) && isset($outage['endTime'])) {
+                            $outage['plannedEnd'] = $outage['endTime'];
+                        }
+                        if (!isset($outage['plannedEnd']) && isset($outage['end_time'])) {
+                            $outage['plannedEnd'] = $outage['end_time'];
+                        }
+                        
+                        return $outage;
+                    }, $outages);
+                    
+                    if (isset($data['data']['outages'])) {
+                        $data['data']['outages'] = $outages;
+                    } elseif (isset($data['outages'])) {
+                        $data['outages'] = $outages;
+                    } else {
+                        $data = $outages;
+                    }
+                }
+                
+                return response()->json($data, $response->status());
+            }
+            
             return response()->json($response->json(), $response->status());
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to fetch outages'], 500);

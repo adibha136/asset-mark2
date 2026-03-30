@@ -10,21 +10,19 @@ use Illuminate\Support\Facades\Mail;
 
 class MailSettingController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(MailSetting::all()->pluck('value', 'key'));
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
+        return response()->json(MailSetting::getForTenant($tenantId));
     }
 
     public function update(Request $request)
     {
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
         $settings = $request->all();
 
-        foreach ($settings as $key => $value) {
-            MailSetting::updateOrCreate(
-                ['key' => $key],
-                ['value' => (string) $value]
-            );
-        }
+        MailSetting::updateForTenant($settings, $tenantId);
 
         return response()->json(['message' => 'Settings updated successfully']);
     }

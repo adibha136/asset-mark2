@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { UserCheck, Search, Phone, Mail, MapPin, MoreVertical, Plus, Loader2, ServerOff, CheckCircle, Flame, Wifi, AlertCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useNextElecomToken } from "@/hooks/useNextElecomToken";
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
@@ -45,6 +45,7 @@ interface Integration {
 }
 
 export default function Clients() {
+  const navigate = useNavigate();
   const { getToken } = useNextElecomToken();
   const [clients, setClients] = useState<Customer[]>([]);
   const [connectivity, setConnectivity] = useState<Connectivity[]>([]);
@@ -67,7 +68,13 @@ export default function Clients() {
     try {
       setLoading(true);
       setErrorMsg("");
-      const response = await fetch("/api/nextelecom/proxy-customers", {
+      const tenantId = localStorage.getItem("tenant_id") || sessionStorage.getItem("tenant_id");
+      const url = new URL("/api/nextelecom/proxy-customers", window.location.origin);
+      if (tenantId) {
+        url.searchParams.append("tenant_id", tenantId);
+      }
+      
+      const response = await fetch(url.toString(), {
         headers: {
           "Authorization": `Bearer ${token}`,
           "Accept": "application/json"
@@ -288,90 +295,121 @@ export default function Clients() {
             <p className="text-xs mt-1">Click "Add Client" to get started.</p>
           </div>
         ) : clients.length > 0 ? (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/30">
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Client</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">IP Address</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden xl:table-cell">Xero</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((c, i) => {
-                const clientConnectivity = connectivity.find(conn => conn.name?.toLowerCase().includes(c.name.toLowerCase()));
-                const xeroIntegration = integrations.find(int => int.code === "XERO" || int.name?.includes("Xero"));
-                
-                return (
-                  <tr key={c.id || i} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-sky-500/20 flex items-center justify-center text-sky-600 text-xs font-bold flex-shrink-0">
-                          {c.name ? c.name.charAt(0).toUpperCase() : "?"}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-medium text-foreground truncate">{c.name}</p>
-                          <p className="text-xs text-muted-foreground truncate">{c.email || "—"}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      {clientConnectivity ? (
-                        <div className="flex items-center gap-1.5">
-                          {clientConnectivity.status === "LIVE" ? (
-                            <>
-                              <CheckCircle className="w-4 h-4 text-emerald-500" />
-                              <span className="text-xs font-medium px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600">
-                                Online
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Email</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Phone</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Type</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">ABN</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Address</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">IP Address</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((c, i) => {
+                  const clientConnectivity = connectivity.find(conn => conn.name?.toLowerCase().includes(c.name.toLowerCase()));
+                  const xeroIntegration = integrations.find(int => int.code === "XERO" || int.name?.includes("Xero"));
+                  const addressParts = [c.address?.streetNumber, c.address?.streetName, c.address?.streetType, c.address?.suburb, c.address?.state, c.address?.postcode]
+                    .filter(Boolean)
+                    .join(" ");
+                  
+                  return (
+                    <tr 
+                      key={c.id || i} 
+                      className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                      onClick={() => navigate(`/nextelecom/clients/${encodeURIComponent(c.id || c.name)}`)}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-sky-500/20 flex items-center justify-center text-sky-600 text-xs font-bold flex-shrink-0">
+                            {c.name ? c.name.charAt(0).toUpperCase() : "?"}
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <p className="font-medium text-foreground truncate">{c.name}</p>
+                            {xeroIntegration && (
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full w-fit mt-1 ${
+                                xeroIntegration.enabled 
+                                  ? "bg-emerald-500/10 text-emerald-600" 
+                                  : "bg-muted text-muted-foreground"
+                              }`}>
+                                {xeroIntegration.enabled ? "✓ Integrated in Xero" : "Xero: Disabled"}
                               </span>
-                            </>
-                          ) : (
-                            <>
-                              <AlertCircle className="w-4 h-4 text-amber-500" />
-                              <span className="text-xs font-medium px-2 py-1 rounded-full bg-amber-500/10 text-amber-600">
-                                {clientConnectivity.status}
-                              </span>
-                            </>
-                          )}
+                            )}
+                          </div>
                         </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">No connection</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      {clientConnectivity?.ipAddressing?.ipCount ? (
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs text-muted-foreground truncate">{c.email || "—"}</p>
+                      </td>
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
-                          <Wifi className="w-3 h-3 text-sky-500" />
-                          <span className="text-xs font-medium text-sky-600">{clientConnectivity.ipAddressing.ipCount} IP{clientConnectivity.ipAddressing.ipCount !== 1 ? 's' : ''}</span>
+                          <Phone className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                          <span className="text-xs truncate">{c.phone || "—"}</span>
                         </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 hidden xl:table-cell">
-                      {xeroIntegration ? (
-                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                          xeroIntegration.enabled 
-                            ? "bg-emerald-500/10 text-emerald-600" 
-                            : "bg-muted text-muted-foreground"
-                        }`}>
-                          {xeroIntegration.enabled ? "✓ Integrated" : "Disabled"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground capitalize">
+                          {c.type || "—"}
                         </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button className="p-1.5 rounded-md hover:bg-muted transition-colors">
-                        <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs truncate font-mono">{c.abn || "—"}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <MapPin className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                          <p className="text-xs text-muted-foreground truncate max-w-xs">{addressParts || "—"}</p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {clientConnectivity ? (
+                          <div className="flex items-center gap-1.5">
+                            {clientConnectivity.status === "LIVE" ? (
+                              <>
+                                <CheckCircle className="w-4 h-4 text-emerald-500" />
+                                <span className="text-xs font-medium px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600">
+                                  Online
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <AlertCircle className="w-4 h-4 text-amber-500" />
+                                <span className="text-xs font-medium px-2 py-1 rounded-full bg-amber-500/10 text-amber-600">
+                                  {clientConnectivity.status}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">No connection</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {clientConnectivity?.ipAddressing?.ipCount ? (
+                          <div className="flex items-center gap-1.5">
+                            <Wifi className="w-3 h-3 text-sky-500" />
+                            <span className="text-xs font-medium text-sky-600">{clientConnectivity.ipAddressing.ipCount} IP{clientConnectivity.ipAddressing.ipCount !== 1 ? 's' : ''}</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button className="p-1.5 rounded-md hover:bg-muted transition-colors">
+                          <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : null}
       </div>
 

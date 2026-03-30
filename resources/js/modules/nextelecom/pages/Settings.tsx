@@ -129,6 +129,7 @@ export default function NexTelecomSettings() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: config.username,
+          password: config.password,
           mfapin: config.mfapin,
           authType: config.authType,
         }),

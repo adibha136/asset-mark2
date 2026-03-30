@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Wifi, Users, Package, TrendingUp, Signal, Zap, Loader2, AlertTriangle, Clock, MapPin, CheckCircle, Globe } from "lucide-react";
+import { Wifi, Users, Package, TrendingUp, Signal, Zap, Loader2, AlertTriangle, Clock, MapPin, CheckCircle, Globe, AlertCircle, Mail, Phone, BookOpen, Ticket, Calendar } from "lucide-react";
 import { useNextElecomToken } from "@/hooks/useNextElecomToken";
 
 interface Connectivity {
@@ -11,11 +11,41 @@ interface Outage {
   id: string;
   title?: string;
   description?: string;
-  location?: string;
+  reason?: string;
+  type?: string;
+  ticketType?: string;
+  category?: string;
+  creationDate?: string;
+  resolutionDate?: string;
+  closeDate?: string;
   startTime?: string;
   endTime?: string;
+  plannedStart?: string;
+  plannedEnd?: string;
   status?: string;
+  location?: string;
   affectedServices?: string[];
+  severity?: "critical" | "high" | "medium" | "low";
+  affectedAssets?: number;
+  expectedResolution?: string;
+  rootCause?: string;
+  duration?: string;
+  details?: {
+    reason?: string;
+    cause?: string;
+    impact?: string;
+    description?: string;
+    [key: string]: any;
+  };
+  updates?: Array<{
+    timestamp?: string;
+    message?: string;
+  }>;
+  supportContact?: {
+    email?: string;
+    phone?: string;
+    ticketNumber?: string;
+  };
   [key: string]: any;
 }
 
@@ -58,6 +88,24 @@ export default function Dashboard() {
     }
   };
 
+  const calculateDuration = (startTime?: string, endTime?: string): string | null => {
+    if (!startTime) return null;
+    try {
+      const start = new Date(startTime);
+      const end = endTime ? new Date(endTime) : new Date();
+      const diffMs = end.getTime() - start.getTime();
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      
+      if (diffHours > 0) {
+        return `${diffHours}h ${diffMinutes}m`;
+      }
+      return `${diffMinutes}m`;
+    } catch {
+      return null;
+    }
+  };
+
   const fetchOutages = async () => {
     const token = await getToken();
     if (!token) {
@@ -76,7 +124,31 @@ export default function Dashboard() {
       if (response.ok) {
         const data = await response.json();
         const items = data?.data?.outages || data?.outages || data?.data || [];
-        setOutages(Array.isArray(items) ? items : []);
+        const processedItems = Array.isArray(items) 
+          ? items.map((item: Outage) => {
+              let reason = item.reason;
+              
+              // Check in details section if reason not found
+              if (!reason && item.details) {
+                reason = (item.details as any)?.reason || 
+                         (item.details as any)?.cause || 
+                         (item.details as any)?.impact || 
+                         (item.details as any)?.description;
+              }
+              
+              // Fallback to other fields
+              if (!reason) {
+                reason = item.rootCause || item.description || item.title || item.summary || 'No reason provided';
+              }
+              
+              return {
+                ...item,
+                reason,
+                duration: item.duration || calculateDuration(item.startTime || item.plannedStart, item.endTime || item.plannedEnd)
+              };
+            })
+          : [];
+        setOutages(processedItems);
       }
     } catch (err) {
       console.error("Failed to fetch outages:", err);
@@ -156,18 +228,15 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-base flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-amber-500" />
-            Service Outages & Notifications
+            Service Outages
           </h2>
           {loadingOutages && <Loader2 className="w-4 h-4 animate-spin text-sky-500" />}
         </div>
 
         {loadingOutages ? (
-          <div className="space-y-3">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="p-3 rounded-lg bg-muted/50 animate-pulse">
-                <div className="h-4 bg-muted rounded w-1/3 mb-2" />
-                <div className="h-3 bg-muted rounded w-2/3" />
-              </div>
+          <div className="space-y-2">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-10 bg-muted/50 rounded animate-pulse" />
             ))}
           </div>
         ) : outages.length === 0 ? (
@@ -176,70 +245,74 @@ export default function Dashboard() {
             <p className="text-sm">No active outages or notifications</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {outages.slice(0, 5).map((outage, idx) => (
-              <div 
-                key={outage.id || idx} 
-                className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 transition-colors"
-              >
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground">
-                      {outage.title || outage.description || "Service Outage"}
-                    </p>
-                    
-                    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                      {(outage.location || outage.serviceLocation) && (
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="w-3 h-3" />
-                          <span>{outage.location || outage.serviceLocation}</span>
-                        </div>
-                      )}
-                      
-                      {(outage.startTime || outage.startDate) && (
-                        <div className="flex items-center gap-1.5">
-                          <Clock className="w-3 h-3" />
-                          <span>
-                            {outage.startTime || outage.startDate}
-                            {outage.endTime || outage.endDate ? ` - ${outage.endTime || outage.endDate}` : ""}
-                          </span>
-                        </div>
-                      )}
-                      
-                      {outage.affectedServices && outage.affectedServices.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {outage.affectedServices.map((svc, i) => (
-                            <span key={i} className="px-2 py-0.5 text-xs bg-amber-500/20 text-amber-700 rounded">
-                              {svc}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {outage.status && (
-                      <div className="mt-2">
-                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                          outage.status === "active" ? "bg-rose-500/10 text-rose-600" :
-                          outage.status === "scheduled" ? "bg-amber-500/10 text-amber-600" :
-                          "bg-emerald-500/10 text-emerald-600"
-                        }`}>
-                          {outage.status}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Type</th>
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Planned Start</th>
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Planned End</th>
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Duration</th>
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Reason</th>
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Location</th>
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Affected</th>
+                </tr>
+              </thead>
+              <tbody>
+                {outages.map((outage, idx) => (
+                  <tr key={outage.id || idx} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
+                    <td className="py-3 px-4">
+                      <span className="inline-flex items-center px-2 py-1 rounded-md bg-blue-500/10 text-blue-600 text-xs font-semibold">
+                        {outage.type || outage.ticketType || "Maintenance"}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-muted-foreground">
+                      {outage.plannedStart ? new Date(outage.plannedStart).toLocaleString() : 
+                       outage.startTime ? new Date(outage.startTime).toLocaleString() : "-"}
+                    </td>
+                    <td className="py-3 px-4 text-muted-foreground">
+                      {outage.plannedEnd ? new Date(outage.plannedEnd).toLocaleString() : 
+                       outage.endTime ? new Date(outage.endTime).toLocaleString() : "-"}
+                    </td>
+                    <td className="py-3 px-4">
+                      {outage.duration ? (
+                        <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-500/10 text-gray-600">
+                          {outage.duration}
                         </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-blue-500 hover:underline cursor-pointer max-w-xs truncate">
+                      {outage.reason || outage.description || "-"}
+                    </td>
+                    <td className="py-3 px-4 text-muted-foreground max-w-xs truncate">
+                      {outage.location || "-"}
+                    </td>
+                    <td className="py-3 px-4">
+                      {outage.affectedServices ? (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md bg-blue-500/10 text-blue-600 text-xs font-semibold whitespace-nowrap">
+                          {outage.affectedServices.length} Service{outage.affectedServices.length !== 1 ? 's' : ''}
+                        </span>
+                      ) : outage.affectedAssets ? (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md bg-blue-500/10 text-blue-600 text-xs font-semibold whitespace-nowrap">
+                          {outage.affectedAssets} Asset{outage.affectedAssets !== 1 ? 's' : ''}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
-        {outages.length > 5 && (
+        {outages.length > 0 && (
           <div className="mt-4 text-center">
             <p className="text-xs text-muted-foreground">
-              Showing 5 of {outages.length} outages
+              Showing 1 to {outages.length} of {outages.length} entries
             </p>
           </div>
         )}

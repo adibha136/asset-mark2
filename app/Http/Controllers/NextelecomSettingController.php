@@ -9,10 +9,14 @@ class NextelecomSettingController extends Controller
 {
     public function getApiSettings(Request $request)
     {
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
         $setting = NextelecomSetting::getSetting('api', [
             'authType' => 'standard',
             'username' => '',
-        ]);
+            'password' => '',
+            'mfapin' => '0000',
+        ], $tenantId);
 
         return response()->json([
             'success' => true,
@@ -22,13 +26,16 @@ class NextelecomSettingController extends Controller
 
     public function saveApiSettings(Request $request)
     {
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
         $validated = $request->validate([
             'authType' => 'required|in:standard,onetime',
             'username' => 'required|string',
+            'password' => 'required|string',
             'mfapin' => 'required|string',
         ]);
 
-        NextelecomSetting::updateSetting('api', $validated);
+        NextelecomSetting::updateSetting('api', $validated, $tenantId);
 
         return response()->json([
             'success' => true,
@@ -39,7 +46,9 @@ class NextelecomSettingController extends Controller
 
     public function getTokenData(Request $request)
     {
-        $token = NextelecomSetting::getSetting('api_token', null);
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
+        $token = NextelecomSetting::getSetting('api_token', null, $tenantId);
 
         return response()->json([
             'success' => true,
@@ -49,6 +58,8 @@ class NextelecomSettingController extends Controller
 
     public function saveTokenData(Request $request)
     {
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
         $validated = $request->validate([
             'token' => 'required|string',
             'username' => 'required|string',
@@ -57,7 +68,7 @@ class NextelecomSettingController extends Controller
 
         $validated['savedAt'] = now()->toDateTimeString();
 
-        NextelecomSetting::updateSetting('api_token', $validated);
+        NextelecomSetting::updateSetting('api_token', $validated, $tenantId);
 
         return response()->json([
             'success' => true,
@@ -68,7 +79,11 @@ class NextelecomSettingController extends Controller
 
     public function deleteToken(Request $request)
     {
-        $setting = NextelecomSetting::where('type', 'api_token')->first();
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
+        $setting = NextelecomSetting::where('type', 'api_token')
+            ->where('tenant_id', $tenantId)
+            ->first();
         if ($setting) {
             $setting->delete();
         }
@@ -81,6 +96,8 @@ class NextelecomSettingController extends Controller
 
     public function getEmailSettings(Request $request)
     {
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
         $setting = NextelecomSetting::getSetting('email', [
             'enabled' => false,
             'address' => '',
@@ -88,7 +105,7 @@ class NextelecomSettingController extends Controller
             'port' => '',
             'username' => '',
             'password' => '',
-        ]);
+        ], $tenantId);
 
         return response()->json([
             'success' => true,
@@ -98,6 +115,8 @@ class NextelecomSettingController extends Controller
 
     public function saveEmailSettings(Request $request)
     {
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
         $validated = $request->validate([
             'enabled' => 'required|boolean',
             'address' => 'nullable|email',
@@ -107,7 +126,7 @@ class NextelecomSettingController extends Controller
             'password' => 'nullable|string',
         ]);
 
-        NextelecomSetting::updateSetting('email', $validated);
+        NextelecomSetting::updateSetting('email', $validated, $tenantId);
 
         return response()->json([
             'success' => true,
@@ -118,11 +137,13 @@ class NextelecomSettingController extends Controller
 
     public function getSmsSettings(Request $request)
     {
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
         $setting = NextelecomSetting::getSetting('sms', [
             'enabled' => false,
             'provider' => '',
             'apiKey' => '',
-        ]);
+        ], $tenantId);
 
         return response()->json([
             'success' => true,
@@ -132,13 +153,15 @@ class NextelecomSettingController extends Controller
 
     public function saveSmsSettings(Request $request)
     {
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
         $validated = $request->validate([
             'enabled' => 'required|boolean',
             'provider' => 'nullable|string',
             'apiKey' => 'nullable|string',
         ]);
 
-        NextelecomSetting::updateSetting('sms', $validated);
+        NextelecomSetting::updateSetting('sms', $validated, $tenantId);
 
         return response()->json([
             'success' => true,
@@ -149,7 +172,9 @@ class NextelecomSettingController extends Controller
 
     public function getAutoSmsSettings(Request $request)
     {
-        $setting = NextelecomSetting::getSetting('auto_sms', false);
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
+        $setting = NextelecomSetting::getSetting('auto_sms', false, $tenantId);
 
         return response()->json([
             'success' => true,
@@ -159,11 +184,13 @@ class NextelecomSettingController extends Controller
 
     public function saveAutoSmsSettings(Request $request)
     {
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
         $validated = $request->validate([
             'enabled' => 'required|boolean',
         ]);
 
-        NextelecomSetting::updateSetting('auto_sms', $validated['enabled']);
+        NextelecomSetting::updateSetting('auto_sms', $validated['enabled'], $tenantId);
 
         return response()->json([
             'success' => true,
@@ -174,12 +201,14 @@ class NextelecomSettingController extends Controller
 
     public function getAllSettings(Request $request)
     {
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        
         $settings = [
-            'api' => NextelecomSetting::getSetting('api', []),
-            'token' => NextelecomSetting::getSetting('api_token', null),
-            'email' => NextelecomSetting::getSetting('email', []),
-            'sms' => NextelecomSetting::getSetting('sms', []),
-            'auto_sms' => NextelecomSetting::getSetting('auto_sms', false),
+            'api' => NextelecomSetting::getSetting('api', [], $tenantId),
+            'token' => NextelecomSetting::getSetting('api_token', null, $tenantId),
+            'email' => NextelecomSetting::getSetting('email', [], $tenantId),
+            'sms' => NextelecomSetting::getSetting('sms', [], $tenantId),
+            'auto_sms' => NextelecomSetting::getSetting('auto_sms', false, $tenantId),
         ];
 
         return response()->json([

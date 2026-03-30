@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 const Dashboard   = lazy(() => import("./pages/Dashboard"));
 const Assets      = lazy(() => import("./pages/Assets"));
 const Clients     = lazy(() => import("./pages/Clients"));
+const CustomerDetails = lazy(() => import("./pages/CustomerDetails"));
 const Connectivity= lazy(() => import("./pages/Connectivity"));
 const UsersRoles  = lazy(() => import("./pages/UsersRoles"));
 const Settings    = lazy(() => import("./pages/Settings"));
@@ -27,6 +28,7 @@ export function NexTelecomRoutes() {
         <Route path="dashboard"            element={<Dashboard />} />
         <Route path="assets"               element={<Assets />} />
         <Route path="clients"              element={<Clients />} />
+        <Route path="clients/:customerId"  element={<CustomerDetails />} />
         <Route path="connectivity"         element={<Connectivity />} />
         <Route path="users-roles"          element={<UsersRoles />} />
         <Route path="customer-verification" element={<CustomerVerification />} />
