@@ -614,6 +614,42 @@ Route::prefix('api')->group(function () {
         }
     });
 
+    Route::get('/nextelecom/proxy-voip', function (Request $request) use ($mockMode) {
+        $token = $request->header('Authorization');
+        if (!$token) {
+            return response()->json(['error' => 'Missing authorization token'], 401);
+        }
+
+        if ($mockMode) {
+            return response()->json([
+                'data' => [
+                    'voip' => [
+                        [
+                            'voipID' => 'VOIP_001',
+                            'name' => 'Business Phone System',
+                            'status' => 'ACTIVE',
+                            'enabled' => true,
+                            'numbers' => ['61282120000', '61282120001'],
+                            'users' => 5,
+                            'protocol' => 'SIP'
+                        ]
+                    ]
+                ]
+            ], 200);
+        }
+
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Authorization' => $token,
+            ])->get('https://api.virtualplatform.com.au/v2/voip/services');
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to fetch VoIP services'], 500);
+        }
+    });
+
     Route::get('/nextelecom/proxy-outages-debug', function (Request $request) use ($mockMode) {
         $token = $request->header('Authorization');
         if (!$token) {
