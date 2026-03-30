@@ -1,16 +1,6 @@
-import React, { useState } from "react";
-import { Package, Search, Filter, MoreVertical, Wifi, Monitor, Router, HardDrive } from "lucide-react";
-
-const mockAssets = [
-  { id: 1, name: "Cisco ASR 9001",   type: "Router",     serial: "CSC-2024-001", location: "North DC",   status: "Active",    ip: "10.0.1.1" },
-  { id: 2, name: "Juniper MX480",    type: "Router",     serial: "JNP-2024-002", location: "South DC",   status: "Active",    ip: "10.0.2.1" },
-  { id: 3, name: "Nokia 7750 SR",    type: "Switch",     serial: "NOK-2024-003", location: "East POP",   status: "Degraded",  ip: "10.0.3.1" },
-  { id: 4, name: "Ericsson MINI-LINK","type": "Wireless", serial: "ERI-2024-004", location: "Tower #14",  status: "Active",    ip: "192.168.1.10" },
-  { id: 5, name: "Huawei OptiX",     type: "Fiber",      serial: "HUW-2024-005", location: "West Hub",   status: "Active",    ip: "10.0.5.1" },
-  { id: 6, name: "Calix GigaPoint",  type: "CPE",        serial: "CAL-2024-006", location: "Client Site",status: "Offline",   ip: "192.168.2.50" },
-  { id: 7, name: "Ubiquiti EdgeMax", type: "Router",     serial: "UBQ-2024-007", location: "Branch A",   status: "Active",    ip: "10.0.7.1" },
-  { id: 8, name: "Mikrotik CCR2004", type: "Router",     serial: "MTK-2024-008", location: "Branch B",   status: "Active",    ip: "10.0.8.1" },
-];
+import React, { useState, useEffect } from "react";
+import { Package, Search, Filter, MoreVertical, Wifi, Monitor, Router, HardDrive, Loader2, CheckCircle, AlertTriangle } from "lucide-react";
+import { useNextElecomToken } from "@/hooks/useNextElecomToken";
 
 const typeIcon: Record<string, any> = {
   Router: Router,
@@ -20,19 +10,60 @@ const typeIcon: Record<string, any> = {
   CPE: Package,
 };
 
-const statusClasses: Record<string, string> = {
-  Active:   "bg-emerald-500/10 text-emerald-600",
-  Degraded: "bg-amber-500/10 text-amber-600",
-  Offline:  "bg-rose-500/10 text-rose-600",
-};
+interface Connectivity {
+  status: string;
+  [key: string]: any;
+}
 
 export default function Assets() {
+  const { getToken } = useNextElecomToken();
   const [search, setSearch] = useState("");
-  const filtered = mockAssets.filter(
-    (a) =>
-      a.name.toLowerCase().includes(search.toLowerCase()) ||
-      a.serial.toLowerCase().includes(search.toLowerCase()) ||
-      a.location.toLowerCase().includes(search.toLowerCase())
+  const [connections, setConnections] = useState<Connectivity[]>([]);
+  const [loadingConnections, setLoadingConnections] = useState(true);
+
+  useEffect(() => {
+    fetchConnectivityData();
+  }, []);
+
+  const fetchConnectivityData = async () => {
+    const token = await getToken();
+    if (!token) {
+      setLoadingConnections(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/nextelecom/proxy-connectivity", {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const items = data?.data?.connectivity || [];
+        setConnections(items);
+      }
+    } catch (err) {
+      console.error("Failed to fetch connectivity data");
+    } finally {
+      setLoadingConnections(false);
+    }
+  };
+
+  const connectivityStats = {
+    total: connections.length,
+    live: connections.filter((c) => c.status === "LIVE").length,
+    provisioning: connections.filter((c) => c.status === "PROVISIONING").length,
+    cancelled: connections.filter((c) => c.status?.includes("CANCELLED")).length,
+  };
+
+  const filtered = connections.filter(
+    (c) =>
+      c.name?.toLowerCase().includes(search.toLowerCase()) ||
+      c.connectivityID?.toLowerCase().includes(search.toLowerCase()) ||
+      c.serviceLocation?.suburb?.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -46,6 +77,37 @@ export default function Assets() {
           <Package className="w-4 h-4" /> Add Device
         </button>
       </div>
+
+      {/* Connectivity Stats Summary */}
+      {loadingConnections ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="rounded-lg border border-border bg-card p-3 animate-pulse">
+              <div className="h-3 bg-muted rounded w-1/2 mb-2" />
+              <div className="h-6 bg-muted rounded w-2/3" />
+            </div>
+          ))}
+        </div>
+      ) : connections.length > 0 ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="rounded-lg border border-border bg-card p-3">
+            <p className="text-xs text-muted-foreground mb-1">Total Connections</p>
+            <p className="text-lg font-bold">{connectivityStats.total}</p>
+          </div>
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+            <p className="text-xs text-emerald-600 font-medium mb-1">Live</p>
+            <p className="text-lg font-bold text-emerald-600">{connectivityStats.live}</p>
+          </div>
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+            <p className="text-xs text-amber-600 font-medium mb-1">Provisioning</p>
+            <p className="text-lg font-bold text-amber-600">{connectivityStats.provisioning}</p>
+          </div>
+          <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 p-3">
+            <p className="text-xs text-rose-600 font-medium mb-1">Offline</p>
+            <p className="text-lg font-bold text-rose-600">{connectivityStats.cancelled}</p>
+          </div>
+        </div>
+      ) : null}
 
       {/* Toolbar */}
       <div className="flex items-center gap-3">
@@ -65,55 +127,75 @@ export default function Assets() {
 
       {/* Table */}
       <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Device</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Type</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Serial</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Location</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">IP Address</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((asset, idx) => {
-              const Icon = typeIcon[asset.type] || Package;
-              return (
-                <tr
-                  key={asset.id}
-                  className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-md bg-sky-500/10 flex items-center justify-center">
-                        <Icon className="w-4 h-4 text-sky-600" />
+        {loadingConnections ? (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
+            <span className="text-sm font-medium">Loading connections...</span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-12 text-center text-muted-foreground text-sm">No connections found</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/30">
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Connection Name</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Product</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Location</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Carrier</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">IPs</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((conn, idx) => {
+                const statusColor = conn.status === "LIVE" ? "bg-emerald-500/10 text-emerald-600" : 
+                                   conn.status === "PROVISIONING" ? "bg-amber-500/10 text-amber-600" :
+                                   "bg-rose-500/10 text-rose-600";
+                const location = `${conn.serviceLocation?.suburb}, ${conn.serviceLocation?.state}`;
+                return (
+                  <tr
+                    key={conn.connectivityID || idx}
+                    className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-md bg-sky-500/10 flex items-center justify-center">
+                          <Wifi className="w-4 h-4 text-sky-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{conn.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{conn.connectivityID}</p>
+                        </div>
                       </div>
-                      <span className="font-medium">{asset.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{asset.type}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground hidden lg:table-cell">{asset.serial}</td>
-                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{asset.location}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground hidden lg:table-cell">{asset.ip}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-medium px-2 py-1 rounded-full ${statusClasses[asset.status]}`}>
-                      {asset.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button className="p-1.5 rounded-md hover:bg-muted transition-colors">
-                      <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {filtered.length === 0 && (
-          <div className="py-12 text-center text-muted-foreground text-sm">No devices found</div>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground hidden md:table-cell text-xs">
+                      {conn.productDetails?.name || conn.product || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell text-xs">
+                      {location}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell text-xs">
+                      {conn.carrier}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs font-medium text-sky-600">{conn.ipAddressing?.ipCount || 0}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${statusColor}`}>
+                        {conn.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button className="p-1.5 rounded-md hover:bg-muted transition-colors">
+                        <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
     </div>

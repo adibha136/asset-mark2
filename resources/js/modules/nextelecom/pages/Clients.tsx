@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { UserCheck, Search, Phone, Mail, MapPin, MoreVertical, Plus, Loader2, ServerOff, CheckCircle, Flame } from "lucide-react";
+import { UserCheck, Search, Phone, Mail, MapPin, MoreVertical, Plus, Loader2, ServerOff, CheckCircle, Flame, Wifi, AlertCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Link } from "react-router-dom";
+import { useNextElecomToken } from "@/hooks/useNextElecomToken";
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 interface Address {
@@ -27,28 +28,36 @@ interface Customer {
   status?: string;
 }
 
+interface Connectivity {
+  connectivityID: string;
+  name: string;
+  status: string;
+  ipAddressing?: { ipCount: number; ipList: (string | null)[] };
+  [key: string]: any;
+}
+
+interface Integration {
+  integrationID: string;
+  name: string;
+  enabled: boolean;
+  code?: string;
+  [key: string]: any;
+}
+
 export default function Clients() {
+  const { getToken } = useNextElecomToken();
   const [clients, setClients] = useState<Customer[]>([]);
+  const [connectivity, setConnectivity] = useState<Connectivity[]>([]);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [search, setSearch] = useState("");
 
-  // Token retrieval
-  const getToken = () => {
-    const raw = localStorage.getItem("nextelecom_api_token");
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw).token;
-    } catch {
-      return null;
-    }
-  };
-
   // ─── Fetch Clients automatically ──────────────────────────────────────────
   const fetchClients = async () => {
-    const token = getToken();
+    const token = await getToken();
     if (!token) {
       setErrorMsg("No API connection configured. Please connect in Settings first.");
       setLoading(false);
@@ -58,7 +67,7 @@ export default function Clients() {
     try {
       setLoading(true);
       setErrorMsg("");
-      const response = await fetch("https://api.virtualplatform.com.au/v2/wholesale/customers", {
+      const response = await fetch("/api/nextelecom/proxy-customers", {
         headers: {
           "Authorization": `Bearer ${token}`,
           "Accept": "application/json"
@@ -66,12 +75,26 @@ export default function Clients() {
       });
 
       if (!response.ok) {
-        throw new Error(`API returned HTTP ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.message || `API returned HTTP ${response.status}`);
       }
 
       const data = await response.json();
-      // Assume API returns an array or data object containing array
-      const items = Array.isArray(data) ? data : (data.data || data.customers || []);
+      
+      let items: Customer[] = [];
+      if (Array.isArray(data)) {
+        items = data;
+      } else if (Array.isArray(data?.data?.customers)) {
+        items = data.data.customers;
+      } else if (Array.isArray(data?.data)) {
+        items = data.data;
+      } else if (Array.isArray(data?.customers)) {
+        items = data.customers;
+      } else if (data && typeof data === 'object') {
+        const arrayProperty = Object.values(data).find(val => Array.isArray(val));
+        items = (arrayProperty as Customer[]) || [];
+      }
+      
       setClients(items);
     } catch (err: any) {
       console.error("Fetch clients error:", err);
@@ -86,8 +109,54 @@ export default function Clients() {
     }
   };
 
+  const fetchConnectivityData = async () => {
+    const token = await getToken();
+    if (!token) return;
+
+    try {
+      const response = await fetch("/api/nextelecom/proxy-connectivity", {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const items = data?.data?.connectivity || [];
+        setConnectivity(items);
+      }
+    } catch (err) {
+      console.error("Failed to fetch connectivity data");
+    }
+  };
+
+  const fetchIntegrations = async () => {
+    const token = await getToken();
+    if (!token) return;
+
+    try {
+      const response = await fetch("/api/nextelecom/proxy-integrations", {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const items = Array.isArray(data?.data) ? data.data : data?.integrations || [];
+        setIntegrations(items);
+      }
+    } catch (err) {
+      console.error("Failed to fetch integrations data");
+    }
+  };
+
   useEffect(() => {
     fetchClients();
+    fetchConnectivityData();
+    fetchIntegrations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -115,7 +184,7 @@ export default function Clients() {
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = getToken();
+    const token = await getToken();
     if (!token) {
       alert("No valid token. Please connect via Settings.");
       return;
@@ -123,7 +192,7 @@ export default function Clients() {
 
     setIsSubmitting(true);
     try {
-      const response = await fetch("https://api.virtualplatform.com.au/v2/wholesale/customers", {
+      const response = await fetch("/api/nextelecom/proxy-customers", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -223,53 +292,84 @@ export default function Clients() {
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Client</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Contact</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Type</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Location</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">IP Address</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden xl:table-cell">Xero</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c, i) => (
-                <tr key={c.id || i} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-sky-500/20 flex items-center justify-center text-sky-600 text-xs font-bold flex-shrink-0">
-                        {c.name ? c.name.charAt(0).toUpperCase() : "?"}
+              {filtered.map((c, i) => {
+                const clientConnectivity = connectivity.find(conn => conn.name?.toLowerCase().includes(c.name.toLowerCase()));
+                const xeroIntegration = integrations.find(int => int.code === "XERO" || int.name?.includes("Xero"));
+                
+                return (
+                  <tr key={c.id || i} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-sky-500/20 flex items-center justify-center text-sky-600 text-xs font-bold flex-shrink-0">
+                          {c.name ? c.name.charAt(0).toUpperCase() : "?"}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground truncate">{c.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{c.email || "—"}</p>
+                        </div>
                       </div>
-                      <span className="font-medium text-foreground">{c.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="text-xs flex items-center gap-1.5 text-muted-foreground mb-1">
-                      <Mail className="w-3 h-3" /> {c.email || "—"}
-                    </div>
-                    <div className="text-xs flex items-center gap-1.5 text-muted-foreground">
-                      <Phone className="w-3 h-3" /> {c.phone || "—"}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 hidden md:table-cell">
-                    <span className="text-xs font-medium px-2 py-1 rounded-full bg-slate-500/10 text-slate-600">
-                      {c.type}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 hidden lg:table-cell">
-                    {c.address && (c.address.suburb || c.address.state) ? (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <MapPin className="w-3.5 h-3.5" />
-                        {c.address.suburb} {c.address.state}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button className="p-1.5 rounded-md hover:bg-muted transition-colors">
-                      <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      {clientConnectivity ? (
+                        <div className="flex items-center gap-1.5">
+                          {clientConnectivity.status === "LIVE" ? (
+                            <>
+                              <CheckCircle className="w-4 h-4 text-emerald-500" />
+                              <span className="text-xs font-medium px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600">
+                                Online
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <AlertCircle className="w-4 h-4 text-amber-500" />
+                              <span className="text-xs font-medium px-2 py-1 rounded-full bg-amber-500/10 text-amber-600">
+                                {clientConnectivity.status}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No connection</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      {clientConnectivity?.ipAddressing?.ipCount ? (
+                        <div className="flex items-center gap-1.5">
+                          <Wifi className="w-3 h-3 text-sky-500" />
+                          <span className="text-xs font-medium text-sky-600">{clientConnectivity.ipAddressing.ipCount} IP{clientConnectivity.ipAddressing.ipCount !== 1 ? 's' : ''}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 hidden xl:table-cell">
+                      {xeroIntegration ? (
+                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                          xeroIntegration.enabled 
+                            ? "bg-emerald-500/10 text-emerald-600" 
+                            : "bg-muted text-muted-foreground"
+                        }`}>
+                          {xeroIntegration.enabled ? "✓ Integrated" : "Disabled"}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button className="p-1.5 rounded-md hover:bg-muted transition-colors">
+                        <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ) : null}

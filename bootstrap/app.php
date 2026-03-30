@@ -20,6 +20,9 @@ return Application::configure(basePath: dirname(__DIR__))
             '/api/sync/*',
             '/api/mail-settings/*',
             '/api/checklist-templates/*',
+            '/api/nextelecom/*',
+            '/api/otp/*',
+            '/api/leads/*',
         ]);
     })
     ->withSchedule(function ($schedule) {

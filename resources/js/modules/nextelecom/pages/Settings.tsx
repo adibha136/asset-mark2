@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
-  Settings,
   Wifi,
-  WifiOff,
   Eye,
   EyeOff,
   RefreshCw,
@@ -16,9 +14,9 @@ import {
   Trash2,
   Copy,
   Check,
+  Database,
 } from "lucide-react";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 type AuthType = "standard" | "onetime";
 type ConnectionStatus = "idle" | "connecting" | "connected" | "failed";
 
@@ -36,57 +34,154 @@ interface TokenData {
   username: string;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const STORAGE_KEY = "nextelecom_api_config";
-const TOKEN_KEY   = "nextelecom_api_token";
-
 const API_URLS: Record<AuthType, string> = {
   standard: "https://api.virtualplatform.com.au/v2/auth",
   onetime:  "https://api.virtualplatform.com.au/v2/onetime/auth",
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const MOCK_MODE = false;
+
 const maskToken = (token: string) =>
   token.length > 20
     ? token.slice(0, 8) + "••••••••••••••" + token.slice(-6)
     : "••••••••••••••••••••";
 
-// ─── Main Component ───────────────────────────────────────────────────────────
 export default function NexTelecomSettings() {
-  const [config, setConfig] = useState<ApiConfig>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved
-      ? JSON.parse(saved)
-      : { username: "", password: "", mfapin: "0000", authType: "standard" };
+  const [loading, setLoading] = useState(true);
+  const [savingApi, setSavingApi] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [savingSms, setSavingSms] = useState(false);
+  const [savingAutoSms, setSavingAutoSms] = useState(false);
+
+  const [config, setConfig] = useState<ApiConfig>({
+    username: "",
+    password: "",
+    mfapin: "0000",
+    authType: "standard",
   });
 
-  const [tokenData, setTokenData]       = useState<TokenData | null>(() => {
-    const saved = localStorage.getItem(TOKEN_KEY);
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [status, setStatus]             = useState<ConnectionStatus>(
-    tokenData ? "connected" : "idle"
-  );
-  const [errorMsg, setErrorMsg]         = useState<string>("");
+  const [tokenData, setTokenData] = useState<TokenData | null>(null);
+  const [status, setStatus] = useState<ConnectionStatus>("idle");
+  const [errorMsg, setErrorMsg] = useState<string>("");
   const [showPassword, setShowPassword] = useState(false);
-  const [showToken, setShowToken]       = useState(false);
-  const [copied, setCopied]             = useState(false);
-  const [dirty, setDirty]               = useState(false);
+  const [showToken, setShowToken] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [dirty, setDirty] = useState(false);
 
-  // Auto-save config (without password) when it changes
+  const [emailSettings, setEmailSettings] = useState({
+    enabled: false,
+    address: "",
+    host: "",
+    port: "",
+    username: "",
+    password: "",
+  });
+
+  const [smsSettings, setSmsSettings] = useState({
+    enabled: false,
+    provider: "",
+    apiKey: "",
+  });
+
+  const [autoSmsEnabled, setAutoSmsEnabled] = useState(false);
+
   useEffect(() => {
-    const toSave = { ...config, password: "" }; // never persist plain password
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-  }, [config]);
+    fetchAllSettings();
+  }, []);
+
+  const fetchAllSettings = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/nextelecom/settings");
+      if (response.ok) {
+        const result = await response.json();
+        const data = result.data;
+
+        if (data.api) {
+          setConfig((prev) => ({ ...prev, ...data.api }));
+        }
+        if (data.token) {
+          setTokenData(data.token);
+          setStatus("connected");
+        }
+        if (data.email) {
+          setEmailSettings(data.email);
+        }
+        if (data.sms) {
+          setSmsSettings(data.sms);
+        }
+        if (data.auto_sms !== undefined) {
+          setAutoSmsEnabled(data.auto_sms);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch settings:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveApiConfig = async () => {
+    setSavingApi(true);
+    try {
+      const response = await fetch("/api/nextelecom/settings/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: config.username,
+          mfapin: config.mfapin,
+          authType: config.authType,
+        }),
+      });
+
+      if (response.ok) {
+        setDirty(false);
+      }
+    } catch (err) {
+      console.error("Failed to save API config:", err);
+    } finally {
+      setSavingApi(false);
+    }
+  };
+
+  const updateEmailSettings = (field: string, value: any) => {
+    const updated = { ...emailSettings, [field]: value };
+    setEmailSettings(updated);
+    setSavingEmail(true);
+    fetch("/api/nextelecom/settings/email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updated),
+    }).finally(() => setSavingEmail(false));
+  };
+
+  const updateSmsSettings = (field: string, value: any) => {
+    const updated = { ...smsSettings, [field]: value };
+    setSmsSettings(updated);
+    setSavingSms(true);
+    fetch("/api/nextelecom/settings/sms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updated),
+    }).finally(() => setSavingSms(false));
+  };
+
+  const updateAutoSms = (value: boolean) => {
+    setAutoSmsEnabled(value);
+    setSavingAutoSms(true);
+    fetch("/api/nextelecom/settings/auto-sms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: value }),
+    }).finally(() => setSavingAutoSms(false));
+  };
 
   const update = (field: keyof ApiConfig, value: string) => {
     setConfig((prev) => ({ ...prev, [field]: value }));
     setDirty(true);
-    if (status === "connected") setStatus("idle"); // mark stale
+    if (status === "connected") setStatus("idle");
   };
 
-  // ── Test Connection ──────────────────────────────────────────────────────────
   const testConnection = async () => {
     if (!config.username.trim() || !config.password.trim()) {
       setErrorMsg("Username and password are required.");
@@ -96,6 +191,54 @@ export default function NexTelecomSettings() {
 
     setStatus("connecting");
     setErrorMsg("");
+
+    if (MOCK_MODE) {
+      await new Promise(r => setTimeout(r, 1500));
+      const mockToken = `mock_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const record: TokenData = {
+        token: mockToken,
+        savedAt: new Date().toLocaleString(),
+        authType: config.authType,
+        username: config.username.trim(),
+      };
+      
+      await fetch("/api/nextelecom/settings/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(record),
+      });
+
+      setTokenData(record);
+      setStatus("connected");
+      setDirty(false);
+      setErrorMsg("");
+      return;
+    }
+
+    try {
+      const checkConn = await fetch("/api/nextelecom/test-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: config.username.trim(),
+          password: config.password,
+          mfapin: config.mfapin || "0000",
+        }),
+      });
+      const connData = await checkConn.json();
+      
+      if (!connData.connected) {
+        setErrorMsg(
+          `⚠️ API Connection Failed\n\n${connData.message}\n\n${connData.error || connData.hint || 'Please check your credentials and network connection.'}`
+        );
+        setStatus("failed");
+        return;
+      }
+    } catch (err) {
+      setErrorMsg("Could not reach the API. Please verify your network connection and the API endpoint.");
+      setStatus("failed");
+      return;
+    }
 
     const body = JSON.stringify({
       authType: config.authType,
@@ -115,31 +258,36 @@ export default function NexTelecomSettings() {
       let data: any = {};
       try { data = JSON.parse(text); } catch { /* non-JSON */ }
 
-      if (response.ok && (data.token || data.access_token)) {
-        const token = data.token ?? data.access_token;
+      if (response.ok && (data.token || data.access_token || data.AUTH_TOKEN)) {
+        const token = data.token ?? data.access_token ?? data.AUTH_TOKEN;
         const record: TokenData = {
           token,
           savedAt:  new Date().toLocaleString(),
           authType: config.authType,
           username: config.username.trim(),
         };
-        localStorage.setItem(TOKEN_KEY, JSON.stringify(record));
+        
+        await fetch("/api/nextelecom/settings/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(record),
+        });
+
         setTokenData(record);
         setStatus("connected");
         setDirty(false);
       } else {
         const msg =
           data.message ?? data.error ?? data.detail ??
-          `HTTP ${response.status}: ${response.statusText}`;
+          `HTTP ${response.status}: ${response.statusText} — Response: ${text}`;
         setErrorMsg(msg);
         setStatus("failed");
       }
     } catch (err: any) {
-      // Network error
       if (err?.message?.includes("Failed to fetch") || err?.message?.includes("NetworkError")) {
         setErrorMsg(
-          "Network error — could not reach the Laravel proxy. " +
-          "Ensure your development server is running."
+          "Network error — could not reach the VirtualPlatform API proxy. " +
+          "Please verify your network connection is active."
         );
       } else {
         setErrorMsg(err?.message ?? "Unknown network error.");
@@ -148,15 +296,17 @@ export default function NexTelecomSettings() {
     }
   };
 
-  // ── Disconnect ───────────────────────────────────────────────────────────────
-  const disconnect = () => {
-    localStorage.removeItem(TOKEN_KEY);
+  const disconnect = async () => {
+    try {
+      await fetch("/api/nextelecom/settings/token", { method: "DELETE" });
+    } catch (err) {
+      console.error("Failed to delete token:", err);
+    }
     setTokenData(null);
     setStatus("idle");
     setErrorMsg("");
   };
 
-  // ── Copy Token ───────────────────────────────────────────────────────────────
   const copyToken = () => {
     if (!tokenData) return;
     navigator.clipboard.writeText(tokenData.token);
@@ -164,7 +314,6 @@ export default function NexTelecomSettings() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // ─── Status UI helpers ───────────────────────────────────────────────────────
   const statusConfig = {
     idle: {
       icon: <Wifi className="w-4 h-4 text-muted-foreground" />,
@@ -192,17 +341,24 @@ export default function NexTelecomSettings() {
     },
   }[status];
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300 max-w-2xl">
-      {/* ── Page Header ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">API Settings</h1>
-          <p className="text-muted-foreground mt-1">
-            Configure NexTelecom's connection to the VirtualPlatform API
+          <h1 className="text-2xl font-bold tracking-tight">NexTelecom Settings</h1>
+          <p className="text-muted-foreground mt-1 flex items-center gap-1">
+            <Database className="w-4 h-4" />
+            All settings synced to database
           </p>
         </div>
-        {/* Live status pill */}
         <div
           className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm font-medium transition-all duration-300 ${statusConfig.badge} ${statusConfig.ring}`}
         >
@@ -211,7 +367,6 @@ export default function NexTelecomSettings() {
         </div>
       </div>
 
-      {/* ── Connection Status Card ───────────────────────────────────────────── */}
       {status === "connected" && tokenData && (
         <div className="rounded-xl border border-emerald-400/40 bg-emerald-500/5 p-5 space-y-3 animate-in slide-in-from-top-2 duration-300">
           <div className="flex items-center gap-2 text-emerald-600 font-semibold">
@@ -232,7 +387,6 @@ export default function NexTelecomSettings() {
               <p className="font-medium">{tokenData.savedAt}</p>
             </div>
           </div>
-          {/* Token display */}
           <div>
             <p className="text-xs text-muted-foreground mb-1">API Token</p>
             <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2">
@@ -258,7 +412,6 @@ export default function NexTelecomSettings() {
               </button>
             </div>
           </div>
-          {/* Disconnect */}
           <button
             onClick={disconnect}
             className="flex items-center gap-2 text-sm text-rose-500 hover:text-rose-600 transition-colors font-medium"
@@ -268,21 +421,19 @@ export default function NexTelecomSettings() {
         </div>
       )}
 
-      {/* ── Error Banner ────────────────────────────────────────────────────── */}
       {status === "failed" && errorMsg && (
         <div className="rounded-xl border border-rose-400/40 bg-rose-500/5 p-4 flex gap-3 animate-in slide-in-from-top-2 duration-200">
           <XCircle className="w-5 h-5 text-rose-500 flex-shrink-0 mt-0.5" />
-          <div>
+          <div className="flex-1">
             <p className="text-sm font-medium text-rose-600">Connection Failed</p>
-            <p className="text-xs text-rose-500/80 mt-0.5">{errorMsg}</p>
+            <p className="text-xs text-rose-500/80 mt-0.5 whitespace-pre-wrap">{errorMsg}</p>
           </div>
         </div>
       )}
 
-      {/* ── Configuration Form ───────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-border bg-card shadow-sm divide-y divide-border">
 
-        {/* Auth Type Toggle */}
+
+      <div className="rounded-xl border border-border bg-card shadow-sm divide-y divide-border">
         <div className="p-5">
           <p className="text-sm font-semibold mb-3">Authentication Type</p>
           <div className="flex gap-3">
@@ -308,7 +459,6 @@ export default function NexTelecomSettings() {
             ))}
           </div>
 
-          {/* Endpoint display */}
           <div className="mt-3 flex items-center gap-2 bg-muted/50 border border-border rounded-lg px-3 py-2">
             <Wifi className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
             <span className="text-xs font-mono text-muted-foreground truncate">
@@ -317,11 +467,9 @@ export default function NexTelecomSettings() {
           </div>
         </div>
 
-        {/* Credentials */}
         <div className="p-5 space-y-4">
           <p className="text-sm font-semibold">Credentials</p>
 
-          {/* Username */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
               Username
@@ -338,7 +486,6 @@ export default function NexTelecomSettings() {
             </div>
           </div>
 
-          {/* Password */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
               Password
@@ -362,11 +509,9 @@ export default function NexTelecomSettings() {
             </div>
           </div>
 
-          {/* MFA PIN */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              MFA PIN{" "}
-              <span className="normal-case text-muted-foreground/60">(default: 0000)</span>
+              MFA PIN <span className="normal-case text-muted-foreground/60">(default: 0000)</span>
             </label>
             <div className="relative">
               <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -382,7 +527,6 @@ export default function NexTelecomSettings() {
           </div>
         </div>
 
-        {/* Request Preview */}
         <div className="p-5">
           <p className="text-sm font-semibold mb-2">Request Preview</p>
           <pre className="text-xs bg-muted/60 border border-border rounded-lg p-3 overflow-x-auto text-muted-foreground leading-relaxed">
@@ -397,11 +541,10 @@ Content-Type: application/json
           </pre>
         </div>
 
-        {/* Action Buttons */}
         <div className="p-5 flex items-center gap-3">
           <button
             onClick={testConnection}
-            disabled={status === "connecting"}
+            disabled={status === "connecting" || savingApi}
             className="flex items-center gap-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-all duration-150 shadow-sm hover:shadow-md"
           >
             {status === "connecting" ? (
@@ -413,6 +556,20 @@ Content-Type: application/json
             )}
           </button>
 
+          {dirty && (
+            <button
+              onClick={saveApiConfig}
+              disabled={savingApi}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-all duration-150"
+            >
+              {savingApi ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+              ) : (
+                <><Check className="w-4 h-4" /> Save Config</>
+              )}
+            </button>
+          )}
+
           {(status === "connected" || status === "failed") && (
             <button
               onClick={() => { setStatus("idle"); setErrorMsg(""); }}
@@ -422,6 +579,181 @@ Content-Type: application/json
             </button>
           )}
         </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card shadow-sm divide-y divide-border">
+        <div className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm font-semibold">Email Settings</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Configure SMTP for email notifications</p>
+            </div>
+            <button
+              onClick={() => updateEmailSettings("enabled", !emailSettings.enabled)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                emailSettings.enabled ? "bg-emerald-500" : "bg-muted"
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                  emailSettings.enabled ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+
+          {emailSettings.enabled && (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Email Address</label>
+                <input
+                  type="email"
+                  value={emailSettings.address}
+                  onChange={(e) => updateEmailSettings("address", e.target.value)}
+                  placeholder="notifications@example.com"
+                  className="w-full px-4 py-2.5 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">SMTP Host</label>
+                  <input
+                    type="text"
+                    value={emailSettings.host}
+                    onChange={(e) => updateEmailSettings("host", e.target.value)}
+                    placeholder="smtp.example.com"
+                    className="w-full px-4 py-2.5 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Port</label>
+                  <input
+                    type="number"
+                    value={emailSettings.port}
+                    onChange={(e) => updateEmailSettings("port", e.target.value)}
+                    placeholder="587"
+                    className="w-full px-4 py-2.5 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">SMTP Username</label>
+                <input
+                  type="text"
+                  value={emailSettings.username}
+                  onChange={(e) => updateEmailSettings("username", e.target.value)}
+                  placeholder="smtp_user"
+                  className="w-full px-4 py-2.5 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">SMTP Password</label>
+                <input
+                  type="password"
+                  value={emailSettings.password}
+                  onChange={(e) => updateEmailSettings("password", e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-2.5 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all"
+                />
+              </div>
+
+              {savingEmail && (
+                <p className="text-xs text-sky-600 flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Saving to database...
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card shadow-sm divide-y divide-border">
+        <div className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm font-semibold">SMS Settings</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Configure SMS provider for notifications</p>
+            </div>
+            <button
+              onClick={() => updateSmsSettings("enabled", !smsSettings.enabled)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                smsSettings.enabled ? "bg-emerald-500" : "bg-muted"
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                  smsSettings.enabled ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+
+          {smsSettings.enabled && (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">SMS Provider</label>
+                <select
+                  value={smsSettings.provider}
+                  onChange={(e) => updateSmsSettings("provider", e.target.value)}
+                  className="w-full px-4 py-2.5 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all"
+                >
+                  <option value="">Select Provider</option>
+                  <option value="twilio">Twilio</option>
+                  <option value="aws_sns">AWS SNS</option>
+                  <option value="nexmo">Nexmo/Vonage</option>
+                  <option value="custom">Custom Provider</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">API Key</label>
+                <input
+                  type="password"
+                  value={smsSettings.apiKey}
+                  onChange={(e) => updateSmsSettings("apiKey", e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-2.5 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all"
+                />
+              </div>
+
+              {savingSms && (
+                <p className="text-xs text-sky-600 flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Saving to database...
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card shadow-sm p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold">Auto SMS Notifications</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Automatically send SMS when customer status changes</p>
+          </div>
+          <button
+            onClick={() => updateAutoSms(!autoSmsEnabled)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              autoSmsEnabled ? "bg-emerald-500" : "bg-muted"
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                autoSmsEnabled ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
+        {savingAutoSms && (
+          <p className="text-xs text-sky-600 flex items-center gap-1 mt-2">
+            <Loader2 className="w-3 h-3 animate-spin" /> Saving to database...
+          </p>
+        )}
       </div>
     </div>
   );

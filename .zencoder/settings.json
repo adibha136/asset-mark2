@@ -7,11 +7,27 @@
       "apiKey": "not-needed",
       "models": {
         "llama3-70b": {
-          "name": "qwen3.5-9b",
-          "displayName": "qwen3.5-9b",
+          "name": "qwen/qwen3-4b-thinking-2507",
+          "displayName": "qwen/qwen3-4b-thinking-2507",
           "capabilities": [],
           "options": {
-            "temperature": 0.7,
+            "temperature": 0.7
+          }
+        }
+      }
+    },
+     "arcee-ai/trinity-large-preview:free": {
+      "mode": "direct",
+      "type": "openai-compatible",
+      "baseUrl": "https://openrouter.ai/api/v1/chat/completions",
+      "apiKey": "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",
+      "models": {
+        "arcee-ai/trinity-large-preview:free": {
+          "name": "arcee-ai/trinity-large-preview:free",
+          "displayName": "arcee-ai/trinity-large-preview:free",
+          "capabilities": [],
+          "options": {
+            "temperature": 0.2,
             "maxOutputTokens": 4096
           }
         }

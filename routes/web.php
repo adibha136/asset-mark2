@@ -3,6 +3,9 @@
 use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\MailSettingController;
+use App\Http\Controllers\OtpVerificationController;
+use App\Http\Controllers\LeadCaptureController;
+use App\Http\Controllers\NextelecomSettingController;
 use App\Jobs\FetchUserPhoto;
 use App\Jobs\SyncTenantDirectory;
 use App\Mail\OtpMail;
@@ -37,14 +40,68 @@ Route::prefix('api')->group(function () {
     Route::post('/mail-settings', [MailSettingController::class, 'update']);
     Route::post('/mail-settings/test', [MailSettingController::class, 'test']);
 
-    Route::post('/nextelecom/proxy-auth', function (Request $request) {
+    $mockMode = env('NEXTELECOM_MOCK_MODE', false);
+
+    Route::post('/nextelecom/test-connection', function (Request $request) {
+        $username = $request->input('username');
+        $password = $request->input('password');
+        $mfapin = $request->input('mfapin', '0000');
+        
+        if (!$username || !$password) {
+            return response()->json([
+                'connected' => false,
+                'message' => 'Username and password are required'
+            ], 400);
+        }
+
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ])->post('https://api.virtualplatform.com.au/v2/auth', [
+                'username' => $username,
+                'password' => $password,
+                'mfapin' => $mfapin,
+            ]);
+
+            $data = $response->json();
+            
+            return response()->json([
+                'connected' => $response->status() === 200,
+                'status' => $response->status(),
+                'message' => $response->status() === 200 ? 'API connection successful' : 'API returned error',
+                'hasToken' => isset($data['token']) || isset($data['access_token']) || isset($data['AUTH_TOKEN']),
+                'data' => $data
+            ], $response->status());
+        } catch (\Exception $e) {
+            return response()->json([
+                'connected' => false,
+                'status' => 0,
+                'message' => 'API is unreachable',
+                'error' => $e->getMessage(),
+                'hint' => 'The VirtualPlatform API server is not responding. Verify the endpoint and your network connection.'
+            ], 503);
+        }
+    });
+
+    Route::post('/nextelecom/proxy-auth', function (Request $request) use ($mockMode) {
+        if ($mockMode) {
+            return response()->json([
+                'token' => 'mock_token_' . Str::random(40),
+                'auth_type' => $request->input('authType', 'standard'),
+                'username' => $request->input('username'),
+                'expires_in' => 86400,
+                'message' => 'Mock authentication successful'
+            ], 200);
+        }
+
         $type = $request->input('authType', 'standard');
         $url = $type === 'onetime' 
             ? 'https://api.virtualplatform.com.au/v2/onetime/auth'
             : 'https://api.virtualplatform.com.au/v2/auth';
 
         try {
-            $response = Http::withHeaders([
+            $response = Http::timeout(30)->withHeaders([
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
             ])->post($url, [
@@ -56,11 +113,209 @@ Route::prefix('api')->group(function () {
             return response()->json($response->json(), $response->status());
         } catch (\Exception $e) {
             return response()->json([
+                'error' => 'Connection Failed',
+                'message' => $e->getMessage(),
+                'hint' => 'The VirtualPlatform API may be unreachable. Enable NEXTELECOM_MOCK_MODE=true in .env to test with mock data.'
+            ], 500);
+        }
+    });
+
+    Route::get('/nextelecom/proxy-customers', function (Request $request) use ($mockMode) {
+        $token = $request->header('Authorization');
+        if (!$token) {
+            return response()->json(['error' => 'Missing authorization token'], 401);
+        }
+
+        if ($mockMode) {
+            return response()->json([
+                'data' => [
+                    'customers' => [
+                        ['id' => 1, 'name' => 'Acme Corporation', 'phone' => '03 9999 1111', 'email' => 'contact@acme.com.au', 'type' => 'business', 'abn' => '12345678901'],
+                        ['id' => 2, 'name' => 'Tech Solutions Pty Ltd', 'phone' => '03 8888 2222', 'email' => 'sales@techsol.com.au', 'type' => 'business', 'abn' => '98765432101'],
+                        ['id' => 3, 'name' => 'John Smith', 'phone' => '0412 555 333', 'email' => 'john@example.com', 'type' => 'person', 'abn' => null],
+                    ]
+                ],
+                'status' => 'OK'
+            ], 200);
+        }
+
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+                'Authorization' => $token,
+            ])->get('https://api.virtualplatform.com.au/v2/wholesale/customers');
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            return response()->json([
                 'error' => 'Proxy Error',
                 'message' => $e->getMessage()
             ], 500);
         }
     });
+
+    Route::post('/nextelecom/proxy-customers', function (Request $request) use ($mockMode) {
+        $token = $request->header('Authorization');
+        if (!$token) {
+            return response()->json(['error' => 'Missing authorization token'], 401);
+        }
+
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+                'Authorization' => $token,
+            ])->post('https://api.virtualplatform.com.au/v2/wholesale/customers', $request->all());
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Proxy Error',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    });
+
+    Route::get('/nextelecom/proxy-connectivity', function (Request $request) use ($mockMode) {
+        $token = $request->header('Authorization');
+        if (!$token) {
+            return response()->json(['error' => 'Missing authorization token'], 401);
+        }
+
+        if ($mockMode) {
+            return response()->json([
+                'data' => [
+                    'connectivity' => [
+                        [
+                            'connectivityID' => 'CON_001',
+                            'name' => 'Internet - Sydney',
+                            'product' => 'FTTP-10040-1-STD',
+                            'carrier' => 'NBN',
+                            'status' => 'LIVE',
+                            'productDetails' => ['name' => 'NBN FTTP Business TC4 100/40Mbps'],
+                            'serviceLocation' => ['suburb' => 'Sydney', 'state' => 'NSW', 'postcode' => '2000'],
+                            'ipAddressing' => ['ipCount' => 2, 'ipList' => ['138.252.147.21', '138.252.147.22']]
+                        ],
+                        [
+                            'connectivityID' => 'CON_002',
+                            'name' => 'Internet - Melbourne',
+                            'product' => 'FTTP-10040-1-STD',
+                            'carrier' => 'NBN',
+                            'status' => 'LIVE',
+                            'productDetails' => ['name' => 'NBN FTTP Business TC4 100/40Mbps'],
+                            'serviceLocation' => ['suburb' => 'Melbourne', 'state' => 'VIC', 'postcode' => '3000'],
+                            'ipAddressing' => ['ipCount' => 2, 'ipList' => ['138.252.147.23', '138.252.147.24']]
+                        ],
+                        [
+                            'connectivityID' => 'CON_003',
+                            'name' => 'Backup - Brisbane',
+                            'product' => 'FTTP-10040-1-STD',
+                            'carrier' => 'NBN',
+                            'status' => 'PROVISIONING',
+                            'productDetails' => ['name' => 'NBN FTTP Business TC4 100/40Mbps'],
+                            'serviceLocation' => ['suburb' => 'Brisbane', 'state' => 'QLD', 'postcode' => '4000'],
+                            'ipAddressing' => ['ipCount' => 0, 'ipList' => [null]]
+                        ],
+                    ]
+                ]
+            ], 200);
+        }
+
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Authorization' => $token,
+            ])->get('https://api.virtualplatform.com.au/v2/connectivity/connections');
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to fetch connectivity'], 500);
+        }
+    });
+
+    Route::get('/nextelecom/proxy-integrations', function (Request $request) use ($mockMode) {
+        $token = $request->header('Authorization');
+        if (!$token) {
+            return response()->json(['error' => 'Missing authorization token'], 401);
+        }
+
+        if ($mockMode) {
+            return response()->json([
+                'data' => [
+                    ['integrationID' => 'int_001', 'name' => 'Xero Accounting', 'enabled' => true, 'code' => 'XERO'],
+                    ['integrationID' => 'int_002', 'name' => 'Salesforce CRM', 'enabled' => true, 'code' => 'SALESFORCE'],
+                    ['integrationID' => 'int_003', 'name' => 'QuickBooks', 'enabled' => false, 'code' => 'QB'],
+                ]
+            ], 200);
+        }
+
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Authorization' => $token,
+            ])->get('https://api.virtualplatform.com.au/v2/wholesale/integrations');
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to fetch integrations'], 500);
+        }
+    });
+
+    Route::get('/nextelecom/proxy-outages', function (Request $request) use ($mockMode) {
+        $token = $request->header('Authorization');
+        if (!$token) {
+            return response()->json(['error' => 'Missing authorization token'], 401);
+        }
+
+        if ($mockMode) {
+            return response()->json([
+                'data' => [
+                    'outages' => [
+                        ['id' => 'OUT_001', 'title' => 'Planned Maintenance - Sydney', 'status' => 'scheduled', 'startTime' => '2026-04-05T02:00:00Z', 'durationHours' => 4],
+                        ['id' => 'OUT_002', 'title' => 'Network Upgrade - Melbourne', 'status' => 'in_progress', 'startTime' => '2026-03-30T10:00:00Z', 'durationHours' => 2],
+                    ]
+                ]
+            ], 200);
+        }
+
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Authorization' => $token,
+            ])->get('https://api.virtualplatform.com.au/v2/wholesale/notification/outages');
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to fetch outages'], 500);
+        }
+    });
+
+    Route::prefix('nextelecom/settings')->group(function () {
+        Route::get('/', [NextelecomSettingController::class, 'getAllSettings']);
+        Route::get('/api', [NextelecomSettingController::class, 'getApiSettings']);
+        Route::post('/api', [NextelecomSettingController::class, 'saveApiSettings']);
+        Route::get('/token', [NextelecomSettingController::class, 'getTokenData']);
+        Route::post('/token', [NextelecomSettingController::class, 'saveTokenData']);
+        Route::delete('/token', [NextelecomSettingController::class, 'deleteToken']);
+        Route::get('/email', [NextelecomSettingController::class, 'getEmailSettings']);
+        Route::post('/email', [NextelecomSettingController::class, 'saveEmailSettings']);
+        Route::get('/sms', [NextelecomSettingController::class, 'getSmsSettings']);
+        Route::post('/sms', [NextelecomSettingController::class, 'saveSmsSettings']);
+        Route::get('/auto-sms', [NextelecomSettingController::class, 'getAutoSmsSettings']);
+        Route::post('/auto-sms', [NextelecomSettingController::class, 'saveAutoSmsSettings']);
+    });
+
+    Route::post('/otp/send', [OtpVerificationController::class, 'sendOtp']);
+    Route::post('/otp/verify', [OtpVerificationController::class, 'verifyOtp']);
+    Route::post('/otp/resend', [OtpVerificationController::class, 'resendOtp']);
+    Route::post('/otp/check-status', [OtpVerificationController::class, 'checkVerificationStatus']);
+
+    Route::post('/leads/capture', [LeadCaptureController::class, 'store']);
+    Route::get('/leads', [LeadCaptureController::class, 'getLeads']);
+    Route::get('/leads/{id}', [LeadCaptureController::class, 'show']);
+    Route::put('/leads/{id}', [LeadCaptureController::class, 'update']);
+    Route::delete('/leads/{id}', [LeadCaptureController::class, 'delete']);
 
     Route::get('/checklist-templates', [ChecklistController::class, 'index']);
     Route::post('/checklist-templates', [ChecklistController::class, 'store']);
