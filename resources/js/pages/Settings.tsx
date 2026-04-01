@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { 
   Mail, Shield, Bell, Save, Send, RefreshCw, 
   Cloud, Database, Zap, Clock, Check, X, Settings as SettingsIcon,
-  Terminal, Info, Calendar
+  Terminal, Info, Calendar, AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +78,13 @@ export default function Settings() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  
+  const [emailSettings, setEmailSettings] = useState<any>({
+    email_mode: 'live',
+    test_recipient_email: '',
+  });
+  const [isEmailSettingsSaving, setIsEmailSettingsSaving] = useState(false);
+  const [isEmailSettingsTesting, setIsEmailSettingsTesting] = useState(false);
 
   useEffect(() => {
     fetchInitialData();
@@ -85,15 +92,20 @@ export default function Settings() {
 
   const fetchInitialData = async () => {
     try {
-      const [mailRes, syncStatsRes, syncLogsRes, syncSettingsRes] = await Promise.all([
+      const [mailRes, syncStatsRes, syncLogsRes, syncSettingsRes, emailSettingsRes] = await Promise.all([
         api.get("/mail-settings"),
         api.get("/sync/stats"),
         api.get("/sync/logs"),
         api.get("/sync/settings"),
+        api.get("/email-settings"),
       ]);
 
       if (mailRes.data) {
         setSettings((prev: any) => ({ ...prev, ...mailRes.data }));
+      }
+      
+      if (emailSettingsRes.data) {
+        setEmailSettings(emailSettingsRes.data);
       }
       
       setSyncStats(syncStatsRes.data);
@@ -134,6 +146,37 @@ export default function Settings() {
       toast.error("Failed to send test email. Please check your SMTP settings.");
     } finally {
       setIsTesting(false);
+    }
+  };
+
+  const handleSaveEmailSettings = async () => {
+    if (emailSettings.email_mode === 'test' && !emailSettings.test_recipient_email) {
+      toast.error("Test recipient email is required when mode is set to Test");
+      return;
+    }
+
+    setIsEmailSettingsSaving(true);
+    try {
+      await api.post("/email-settings", emailSettings);
+      toast.success("Email settings saved successfully");
+    } catch (error) {
+      console.error("Failed to save email settings:", error);
+      toast.error("Failed to save email settings");
+    } finally {
+      setIsEmailSettingsSaving(false);
+    }
+  };
+
+  const handleTestEmailSettings = async () => {
+    setIsEmailSettingsTesting(true);
+    try {
+      await api.post("/email-settings/test", { email: emailSettings.test_recipient_email || settings.notification_email });
+      toast.success("Test email sent successfully to " + (emailSettings.test_recipient_email || settings.notification_email));
+    } catch (error) {
+      console.error("Failed to send test email:", error);
+      toast.error("Failed to send test email");
+    } finally {
+      setIsEmailSettingsTesting(false);
     }
   };
 
@@ -192,6 +235,10 @@ export default function Settings() {
           <TabsTrigger value="general" className="gap-2">
             <SettingsIcon className="w-4 h-4" />
             General Settings
+          </TabsTrigger>
+          <TabsTrigger value="email" className="gap-2">
+            <Mail className="w-4 h-4" />
+            Email Settings
           </TabsTrigger>
           <TabsTrigger value="sync" className="gap-2">
             <RefreshCw className="w-4 h-4" />
@@ -385,6 +432,120 @@ export default function Settings() {
                       api.post("/mail-settings", { trigger_secret_expiry: val ? "1" : "0" });
                     }}
                   />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="email" className="space-y-6">
+          <div className="grid gap-6">
+            <Card className="opacity-0 animate-fade-in">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Mail className="w-5 h-5 text-primary" />
+                  <CardTitle>Email Delivery Mode</CardTitle>
+                </div>
+                <CardDescription>Configure email sending mode - Test or Live</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="email_mode">Email Mode</Label>
+                  <Select value={emailSettings.email_mode} onValueChange={(val) => setEmailSettings({ ...emailSettings, email_mode: val })}>
+                    <SelectTrigger id="email_mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="test">Test Mode</SelectItem>
+                      <SelectItem value="live">Live Mode</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    {emailSettings.email_mode === 'test' 
+                      ? "Test mode will redirect all emails to the test recipient email address below"
+                      : "Live mode will send emails to actual client recipients"}
+                  </p>
+                </div>
+
+                {emailSettings.email_mode === 'test' && (
+                  <div className="space-y-4">
+                    <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex gap-2">
+                      <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
+                      <p className="text-sm text-yellow-600 dark:text-yellow-500">
+                        <strong>Test mode is enabled:</strong> All outgoing emails will be redirected to the test recipient address below. No real client emails will be sent.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="test_recipient_email">Test Recipient Email *</Label>
+                      <Input
+                        id="test_recipient_email"
+                        type="email"
+                        placeholder="test@example.com"
+                        value={emailSettings.test_recipient_email || ''}
+                        onChange={(e) => setEmailSettings({ ...emailSettings, test_recipient_email: e.target.value })}
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        All emails will be sent to this address when in test mode
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-4 border-t">
+                  <Button onClick={handleSaveEmailSettings} disabled={isEmailSettingsSaving}>
+                    {isEmailSettingsSaving ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" />
+                        Save Email Settings
+                      </>
+                    )}
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleTestEmailSettings} 
+                    disabled={isEmailSettingsTesting || !emailSettings.test_recipient_email && emailSettings.email_mode === 'test'}
+                  >
+                    {isEmailSettingsTesting ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        Send Test Email
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="opacity-0 animate-fade-in" style={{ animationDelay: "100ms" }}>
+              <CardHeader>
+                <CardTitle className="text-sm">Current Configuration</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="flex justify-between items-center p-2 bg-muted rounded">
+                  <span className="font-medium">Email Mode:</span>
+                  <Badge variant={emailSettings.email_mode === 'test' ? 'destructive' : 'default'}>
+                    {emailSettings.email_mode === 'test' ? 'TEST MODE' : 'LIVE MODE'}
+                  </Badge>
+                </div>
+                {emailSettings.email_mode === 'test' && (
+                  <div className="flex justify-between items-center p-2 bg-muted rounded">
+                    <span className="font-medium">Test Recipient:</span>
+                    <span className="text-muted-foreground">{emailSettings.test_recipient_email || 'Not set'}</span>
+                  </div>
+                )}
+                <div className="mt-3 p-2 bg-blue-500/10 border border-blue-500/20 rounded text-blue-600 dark:text-blue-400 text-xs">
+                  Emails configured with the Email Mode setting will override all recipient addresses in {emailSettings.email_mode === 'test' ? 'test' : 'live'} mode.
                 </div>
               </CardContent>
             </Card>

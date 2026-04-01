@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Mail\UserCredentialsMail;
 use App\Models\MailSetting;
+use App\Services\EmailModeService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -13,11 +14,26 @@ class NotificationService
     {
         Log::info('Attempting to send credentials email to: '.$user->email);
 
-        MailService::configureMailer();
+        $tenantId = app('tenant.id') ?? null;
+        MailService::configureMailer($tenantId);
+
+        $recipientEmail = EmailModeService::getRecipients($user->email, $tenantId);
+
+        if (!$recipientEmail) {
+            Log::error('Cannot send credentials email - no email configured for test mode', [
+                'user_id' => $user->id,
+                'tenant_id' => $tenantId,
+            ]);
+            return;
+        }
 
         try {
-            Mail::to($user->email)->send(new UserCredentialsMail($user, $password));
-            Log::info('Credentials email sent successfully to: '.$user->email);
+            Mail::to($recipientEmail)->send(new UserCredentialsMail($user, $password));
+            EmailModeService::processMail($user->email, $tenantId);
+            Log::info('Credentials email sent successfully to: '.$recipientEmail, [
+                'original_recipient' => $user->email,
+                'tenant_id' => $tenantId,
+            ]);
         } catch (\Exception $e) {
             Log::error('Failed to send user credentials email: '.$e->getMessage());
         }
@@ -31,7 +47,8 @@ class NotificationService
             return;
         }
 
-        MailService::configureMailer();
+        $tenantId = app('tenant.id') ?? null;
+        MailService::configureMailer($tenantId);
 
         $toEmail = $settings->get('notification_email');
         if (! $toEmail) {
@@ -40,10 +57,22 @@ class NotificationService
             return;
         }
 
+        $recipientEmail = EmailModeService::getRecipients($toEmail, $tenantId);
+
+        if (!$recipientEmail) {
+            Log::error('Cannot send asset assigned notification - no email configured for test mode', [
+                'asset_id' => $asset->id,
+                'tenant_id' => $tenantId,
+            ]);
+            return;
+        }
+
         try {
-            Mail::raw("Asset '{$asset->name}' (Serial: {$asset->serial_number}) has been assigned to user '{$user->name}' ({$user->email}).", function ($message) use ($toEmail) {
-                $message->to($toEmail)
+            Mail::raw("Asset '{$asset->name}' (Serial: {$asset->serial_number}) has been assigned to user '{$user->name}' ({$user->email}).", function ($message) use ($recipientEmail, $tenantId) {
+                $message->to($recipientEmail)
                     ->subject('Asset Assigned Notification');
+
+                EmailModeService::processMail($message, $tenantId);
             });
         } catch (\Exception $e) {
             Log::error('Failed to send asset assigned notification: '.$e->getMessage());
@@ -58,10 +87,20 @@ class NotificationService
             return;
         }
 
-        MailService::configureMailer();
+        $tenantId = app('tenant.id') ?? null;
+        MailService::configureMailer($tenantId);
 
         $toEmail = $settings->get('notification_email');
         if (! $toEmail) {
+            return;
+        }
+
+        $recipientEmail = EmailModeService::getRecipients($toEmail, $tenantId);
+
+        if (!$recipientEmail) {
+            Log::error('Cannot send warranty expiry notification - no email configured for test mode', [
+                'tenant_id' => $tenantId,
+            ]);
             return;
         }
 
@@ -71,9 +110,11 @@ class NotificationService
         }
 
         try {
-            Mail::raw($content, function ($message) use ($toEmail) {
-                $message->to($toEmail)
+            Mail::raw($content, function ($message) use ($recipientEmail, $tenantId) {
+                $message->to($recipientEmail)
                     ->subject('Asset Warranty Expiry Alert');
+
+                EmailModeService::processMail($message, $tenantId);
             });
         } catch (\Exception $e) {
             Log::error('Failed to send warranty expiry notification: '.$e->getMessage());
@@ -88,10 +129,20 @@ class NotificationService
             return;
         }
 
-        MailService::configureMailer();
+        $tenantId = app('tenant.id') ?? null;
+        MailService::configureMailer($tenantId);
 
         $toEmail = $settings->get('notification_email');
         if (! $toEmail) {
+            return;
+        }
+
+        $recipientEmail = EmailModeService::getRecipients($toEmail, $tenantId);
+
+        if (!$recipientEmail) {
+            Log::error('Cannot send user inactive notification - no email configured for test mode', [
+                'tenant_id' => $tenantId,
+            ]);
             return;
         }
 
@@ -125,9 +176,11 @@ class NotificationService
             </table>';
 
         try {
-            Mail::html($html, function ($message) use ($toEmail) {
-                $message->to($toEmail)
+            Mail::html($html, function ($message) use ($recipientEmail, $tenantId) {
+                $message->to($recipientEmail)
                     ->subject('User Inactive Alert');
+
+                EmailModeService::processMail($message, $tenantId);
             });
         } catch (\Exception $e) {
             Log::error('Failed to send user inactive notification: '.$e->getMessage());
@@ -142,10 +195,20 @@ class NotificationService
             return;
         }
 
-        MailService::configureMailer();
+        $tenantId = app('tenant.id') ?? null;
+        MailService::configureMailer($tenantId);
 
         $toEmail = $settings->get('notification_email');
         if (! $toEmail) {
+            return;
+        }
+
+        $recipientEmail = EmailModeService::getRecipients($toEmail, $tenantId);
+
+        if (!$recipientEmail) {
+            Log::error('Cannot send secret expiry notification - no email configured for test mode', [
+                'tenant_id' => $tenantId,
+            ]);
             return;
         }
 
@@ -190,9 +253,11 @@ class NotificationService
             <p>Please update these credentials in the tenant settings and Azure Portal to avoid service interruption.</p>';
 
         try {
-            Mail::html($html, function ($message) use ($toEmail) {
-                $message->to($toEmail)
+            Mail::html($html, function ($message) use ($recipientEmail, $tenantId) {
+                $message->to($recipientEmail)
                     ->subject('Tenant Credential Expiry Alert');
+
+                EmailModeService::processMail($message, $tenantId);
             });
         } catch (\Exception $e) {
             Log::error('Failed to send secret expiry notification: '.$e->getMessage());

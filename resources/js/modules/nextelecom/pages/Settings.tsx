@@ -15,7 +15,10 @@ import {
   Copy,
   Check,
   Database,
+  Mail,
+  AlertCircle,
 } from "lucide-react";
+import api from "@/lib/api";
 
 type AuthType = "standard" | "onetime";
 type ConnectionStatus = "idle" | "connecting" | "connected" | "failed";
@@ -85,6 +88,12 @@ export default function NexTelecomSettings() {
 
   const [autoSmsEnabled, setAutoSmsEnabled] = useState(false);
 
+  const [emailMode, setEmailMode] = useState("live");
+  const [testRecipientEmail, setTestRecipientEmail] = useState("");
+  const [savingEmailMode, setSavingEmailMode] = useState(false);
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [testingSmtp, setTestingSmtp] = useState(false);
+
   useEffect(() => {
     fetchAllSettings();
   }, []);
@@ -92,10 +101,13 @@ export default function NexTelecomSettings() {
   const fetchAllSettings = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/nextelecom/settings");
-      if (response.ok) {
-        const result = await response.json();
-        const data = result.data;
+      const [nextelecomRes, emailModeRes] = await Promise.all([
+        api.get("/nextelecom/settings"),
+        api.get("/email-settings"),
+      ]);
+
+      if (nextelecomRes.data) {
+        const data = nextelecomRes.data.data;
 
         if (data.api) {
           setConfig((prev) => ({ ...prev, ...data.api }));
@@ -114,6 +126,11 @@ export default function NexTelecomSettings() {
           setAutoSmsEnabled(data.auto_sms);
         }
       }
+
+      if (emailModeRes.data) {
+        setEmailMode(emailModeRes.data.email_mode || "live");
+        setTestRecipientEmail(emailModeRes.data.test_recipient_email || "");
+      }
     } catch (err) {
       console.error("Failed to fetch settings:", err);
     } finally {
@@ -124,20 +141,13 @@ export default function NexTelecomSettings() {
   const saveApiConfig = async () => {
     setSavingApi(true);
     try {
-      const response = await fetch("/api/nextelecom/settings/api", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: config.username,
-          password: config.password,
-          mfapin: config.mfapin,
-          authType: config.authType,
-        }),
+      await api.post("/nextelecom/settings/api", {
+        username: config.username,
+        password: config.password,
+        mfapin: config.mfapin,
+        authType: config.authType,
       });
-
-      if (response.ok) {
-        setDirty(false);
-      }
+      setDirty(false);
     } catch (err) {
       console.error("Failed to save API config:", err);
     } finally {
@@ -149,32 +159,76 @@ export default function NexTelecomSettings() {
     const updated = { ...emailSettings, [field]: value };
     setEmailSettings(updated);
     setSavingEmail(true);
-    fetch("/api/nextelecom/settings/email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updated),
-    }).finally(() => setSavingEmail(false));
+    api.post("/nextelecom/settings/email", updated).finally(() => setSavingEmail(false));
   };
 
   const updateSmsSettings = (field: string, value: any) => {
     const updated = { ...smsSettings, [field]: value };
     setSmsSettings(updated);
     setSavingSms(true);
-    fetch("/api/nextelecom/settings/sms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updated),
-    }).finally(() => setSavingSms(false));
+    api.post("/nextelecom/settings/sms", updated).finally(() => setSavingSms(false));
   };
 
   const updateAutoSms = (value: boolean) => {
     setAutoSmsEnabled(value);
     setSavingAutoSms(true);
-    fetch("/api/nextelecom/settings/auto-sms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled: value }),
-    }).finally(() => setSavingAutoSms(false));
+    api.post("/nextelecom/settings/auto-sms", { enabled: value }).finally(() => setSavingAutoSms(false));
+  };
+
+  const saveEmailMode = async () => {
+    if (emailMode === "test" && !testRecipientEmail) {
+      alert("Test recipient email is required when mode is set to Test");
+      return;
+    }
+
+    setSavingEmailMode(true);
+    try {
+      await api.post("/email-settings", {
+        email_mode: emailMode,
+        test_recipient_email: testRecipientEmail || null,
+      });
+      alert("Email mode settings saved successfully!");
+    } catch (err) {
+      console.error("Failed to save email mode:", err);
+      alert("Failed to save email mode settings: " + (err.response?.data?.message || err.message));
+    } finally {
+      setSavingEmailMode(false);
+    }
+  };
+
+  const testEmailMode = async () => {
+    setTestingEmail(true);
+    try {
+      await api.post("/email-settings/test", {
+        email: testRecipientEmail || emailSettings.address,
+      });
+      alert("Test email sent successfully!");
+    } catch (err) {
+      console.error("Failed to send test email:", err);
+      alert("Failed to send test email: " + (err.response?.data?.message || err.message));
+    } finally {
+      setTestingEmail(false);
+    }
+  };
+
+  const testSmtpConnection = async () => {
+    if (!emailSettings.address || !emailSettings.host) {
+      alert("Please configure email address and SMTP host first");
+      return;
+    }
+
+    setTestingSmtp(true);
+    try {
+      await api.post("/mail-settings/test", {
+        email: emailSettings.address,
+      });
+      alert("✅ SMTP test email sent successfully to " + emailSettings.address);
+    } catch (err) {
+      console.error("Failed to test SMTP:", err);
+      alert("❌ SMTP Test Failed: " + (err.response?.data?.message || err.message));
+    } finally {
+      setTestingSmtp(false);
+    }
   };
 
   const update = (field: keyof ApiConfig, value: string) => {
@@ -217,20 +271,15 @@ export default function NexTelecomSettings() {
     }
 
     try {
-      const checkConn = await fetch("/api/nextelecom/test-connection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: config.username.trim(),
-          password: config.password,
-          mfapin: config.mfapin || "0000",
-        }),
+      const response = await api.post("/nextelecom/test-connection", {
+        username: config.username.trim(),
+        password: config.password,
+        mfapin: config.mfapin || "0000",
       });
-      const connData = await checkConn.json();
       
-      if (!connData.connected) {
+      if (!response.data.connected) {
         setErrorMsg(
-          `⚠️ API Connection Failed\n\n${connData.message}\n\n${connData.error || connData.hint || 'Please check your credentials and network connection.'}`
+          `⚠️ API Connection Failed\n\n${response.data.message}\n\n${response.data.error || response.data.hint || 'Please check your credentials and network connection.'}`
         );
         setStatus("failed");
         return;
@@ -249,18 +298,10 @@ export default function NexTelecomSettings() {
     });
 
     try {
-      const response = await fetch("/api/nextelecom/proxy-auth", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body,
-      });
+      const response = await api.post("/nextelecom/proxy-auth", JSON.parse(body));
 
-      const text = await response.text();
-      let data: any = {};
-      try { data = JSON.parse(text); } catch { /* non-JSON */ }
-
-      if (response.ok && (data.token || data.access_token || data.AUTH_TOKEN)) {
-        const token = data.token ?? data.access_token ?? data.AUTH_TOKEN;
+      if (response.data && (response.data.token || response.data.access_token || response.data.AUTH_TOKEN)) {
+        const token = response.data.token ?? response.data.access_token ?? response.data.AUTH_TOKEN;
         const record: TokenData = {
           token,
           savedAt:  new Date().toLocaleString(),
@@ -268,19 +309,14 @@ export default function NexTelecomSettings() {
           username: config.username.trim(),
         };
         
-        await fetch("/api/nextelecom/settings/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(record),
-        });
+        await api.post("/nextelecom/settings/token", record);
 
         setTokenData(record);
         setStatus("connected");
         setDirty(false);
       } else {
         const msg =
-          data.message ?? data.error ?? data.detail ??
-          `HTTP ${response.status}: ${response.statusText} — Response: ${text}`;
+          response.data?.message ?? response.data?.error ?? response.data?.detail ?? "Unknown error";
         setErrorMsg(msg);
         setStatus("failed");
       }
@@ -291,7 +327,7 @@ export default function NexTelecomSettings() {
           "Please verify your network connection is active."
         );
       } else {
-        setErrorMsg(err?.message ?? "Unknown network error.");
+        setErrorMsg(err?.response?.data?.message ?? err?.message ?? "Unknown network error.");
       }
       setStatus("failed");
     }
@@ -299,7 +335,7 @@ export default function NexTelecomSettings() {
 
   const disconnect = async () => {
     try {
-      await fetch("/api/nextelecom/settings/token", { method: "DELETE" });
+      await api.delete("/nextelecom/settings/token");
     } catch (err) {
       console.error("Failed to delete token:", err);
     }
@@ -603,6 +639,15 @@ Content-Type: application/json
             </button>
           </div>
 
+          {!emailSettings.enabled && (
+            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex gap-2 mb-4">
+              <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-blue-600 dark:text-blue-500">
+                Email notifications are currently <strong>disabled</strong>. Enable the toggle above to configure SMTP and send test emails.
+              </p>
+            </div>
+          )}
+
           {emailSettings.enabled && (
             <div className="space-y-4">
               <div className="space-y-1.5">
@@ -662,6 +707,27 @@ Content-Type: application/json
                 />
               </div>
 
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={testSmtpConnection}
+                  disabled={testingSmtp}
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    testingSmtp
+                      ? "bg-muted text-muted-foreground cursor-not-allowed"
+                      : "bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800"
+                  }`}
+                >
+                  {testingSmtp ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin inline mr-2" />
+                      Testing...
+                    </>
+                  ) : (
+                    "Test SMTP Connection"
+                  )}
+                </button>
+              </div>
+
               {savingEmail && (
                 <p className="text-xs text-sky-600 flex items-center gap-1">
                   <Loader2 className="w-3 h-3 animate-spin" /> Saving to database...
@@ -669,6 +735,106 @@ Content-Type: application/json
               )}
             </div>
           )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card shadow-sm divide-y divide-border">
+        <div className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm font-semibold">Email Delivery Mode</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Configure Test or Live email mode</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Email Mode</label>
+              <select
+                value={emailMode}
+                onChange={(e) => setEmailMode(e.target.value)}
+                className="w-full px-4 py-2.5 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all"
+              >
+                <option value="live">Live Mode</option>
+                <option value="test">Test Mode</option>
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">
+                {emailMode === "test" 
+                  ? "Test mode will redirect all emails to the test recipient address below"
+                  : "Live mode will send emails to actual recipients"}
+              </p>
+            </div>
+
+            {emailMode === "test" && (
+              <>
+                <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex gap-2">
+                  <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-yellow-600 dark:text-yellow-500">
+                    <strong>Test mode is enabled:</strong> All outgoing emails will be redirected to the test recipient address below. No real client emails will be sent.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Test Recipient Email *</label>
+                  <input
+                    type="email"
+                    value={testRecipientEmail}
+                    onChange={(e) => setTestRecipientEmail(e.target.value)}
+                    placeholder="test@example.com"
+                    className="w-full px-4 py-2.5 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    All emails will be sent to this address when in test mode
+                  </p>
+                </div>
+              </>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={saveEmailMode}
+                disabled={savingEmailMode}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  savingEmailMode
+                    ? "bg-muted text-muted-foreground cursor-not-allowed"
+                    : "bg-sky-600 text-white hover:bg-sky-700 active:bg-sky-800"
+                }`}
+              >
+                {savingEmailMode ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin inline mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Email Mode"
+                )}
+              </button>
+              <button
+                onClick={testEmailMode}
+                disabled={testingEmail || (emailMode === "test" && !testRecipientEmail)}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  testingEmail || (emailMode === "test" && !testRecipientEmail)
+                    ? "bg-muted text-muted-foreground cursor-not-allowed"
+                    : "bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800"
+                }`}
+              >
+                {testingEmail ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin inline mr-2" />
+                    Sending...
+                  </>
+                ) : (
+                  "Send Test Email"
+                )}
+              </button>
+            </div>
+
+            {savingEmailMode && (
+              <p className="text-xs text-sky-600 flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" /> Saving to database...
+              </p>
+            )}
+          </div>
         </div>
       </div>
 

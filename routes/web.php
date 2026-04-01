@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ChecklistController;
+use App\Http\Controllers\EmailSettingsController;
 use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\MailSettingController;
 use App\Http\Controllers\OtpVerificationController;
@@ -40,6 +41,10 @@ Route::prefix('api')->group(function () {
     Route::get('/mail-settings', [MailSettingController::class, 'index']);
     Route::post('/mail-settings', [MailSettingController::class, 'update']);
     Route::post('/mail-settings/test', [MailSettingController::class, 'test']);
+
+    Route::get('/email-settings', [EmailSettingsController::class, 'index']);
+    Route::post('/email-settings', [EmailSettingsController::class, 'update']);
+    Route::post('/email-settings/test', [EmailSettingsController::class, 'test']);
 
     $mockMode = env('NEXTELECOM_MOCK_MODE', false);
 

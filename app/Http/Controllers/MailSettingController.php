@@ -30,8 +30,9 @@ class MailSettingController extends Controller
     public function test(Request $request)
     {
         $request->validate(['email' => 'required|email']);
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
 
-        MailService::configureMailer();
+        MailService::configureMailer($tenantId);
 
         try {
             Mail::raw('This is a test email from AssetFlow to verify SMTP settings.', function ($message) use ($request) {

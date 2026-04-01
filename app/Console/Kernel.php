@@ -33,6 +33,8 @@ class Kernel extends ConsoleKernel
         $schedule->command('notifications:check-secret-expiry')
             ->quarterly()
             ->withoutOverlapping();
+
+        $schedule->command('outages:check')->everyFifteenMinutes();
     }
 
     protected function commands()
