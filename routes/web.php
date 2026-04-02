@@ -3,10 +3,10 @@
 use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\EmailSettingsController;
 use App\Http\Controllers\GlobalSearchController;
-use App\Http\Controllers\MailSettingController;
-use App\Http\Controllers\OtpVerificationController;
 use App\Http\Controllers\LeadCaptureController;
+use App\Http\Controllers\MailSettingController;
 use App\Http\Controllers\NextelecomSettingController;
+use App\Http\Controllers\OtpVerificationController;
 use App\Jobs\FetchUserPhoto;
 use App\Jobs\SyncTenantDirectory;
 use App\Mail\OtpMail;
@@ -22,6 +22,7 @@ use App\Models\SyncLog;
 use App\Models\SyncSetting;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\EmailModeService;
 use App\Services\MailService;
 use App\Services\MicrosoftGraphService;
 use App\Services\NotificationService;
@@ -52,11 +53,11 @@ Route::prefix('api')->group(function () {
         $username = $request->input('username');
         $password = $request->input('password');
         $mfapin = $request->input('mfapin', '0000');
-        
-        if (!$username || !$password) {
+
+        if (! $username || ! $password) {
             return response()->json([
                 'connected' => false,
-                'message' => 'Username and password are required'
+                'message' => 'Username and password are required',
             ], 400);
         }
 
@@ -71,13 +72,13 @@ Route::prefix('api')->group(function () {
             ]);
 
             $data = $response->json();
-            
+
             return response()->json([
                 'connected' => $response->status() === 200,
                 'status' => $response->status(),
                 'message' => $response->status() === 200 ? 'API connection successful' : 'API returned error',
                 'hasToken' => isset($data['token']) || isset($data['access_token']) || isset($data['AUTH_TOKEN']),
-                'data' => $data
+                'data' => $data,
             ], $response->status());
         } catch (\Exception $e) {
             return response()->json([
@@ -85,7 +86,7 @@ Route::prefix('api')->group(function () {
                 'status' => 0,
                 'message' => 'API is unreachable',
                 'error' => $e->getMessage(),
-                'hint' => 'The VirtualPlatform API server is not responding. Verify the endpoint and your network connection.'
+                'hint' => 'The VirtualPlatform API server is not responding. Verify the endpoint and your network connection.',
             ], 503);
         }
     });
@@ -93,16 +94,16 @@ Route::prefix('api')->group(function () {
     Route::post('/nextelecom/proxy-auth', function (Request $request) use ($mockMode) {
         if ($mockMode) {
             return response()->json([
-                'token' => 'mock_token_' . Str::random(40),
+                'token' => 'mock_token_'.Str::random(40),
                 'auth_type' => $request->input('authType', 'standard'),
                 'username' => $request->input('username'),
                 'expires_in' => 86400,
-                'message' => 'Mock authentication successful'
+                'message' => 'Mock authentication successful',
             ], 200);
         }
 
         $type = $request->input('authType', 'standard');
-        $url = $type === 'onetime' 
+        $url = $type === 'onetime'
             ? 'https://api.virtualplatform.com.au/v2/onetime/auth'
             : 'https://api.virtualplatform.com.au/v2/auth';
 
@@ -113,7 +114,7 @@ Route::prefix('api')->group(function () {
             ])->post($url, [
                 'username' => $request->input('username'),
                 'password' => $request->input('password'),
-                'mfapin'   => $request->input('mfapin', '0000'),
+                'mfapin' => $request->input('mfapin', '0000'),
             ]);
 
             return response()->json($response->json(), $response->status());
@@ -121,24 +122,24 @@ Route::prefix('api')->group(function () {
             return response()->json([
                 'error' => 'Connection Failed',
                 'message' => $e->getMessage(),
-                'hint' => 'The VirtualPlatform API may be unreachable. Enable NEXTELECOM_MOCK_MODE=true in .env to test with mock data.'
+                'hint' => 'The VirtualPlatform API may be unreachable. Enable NEXTELECOM_MOCK_MODE=true in .env to test with mock data.',
             ], 500);
         }
     });
 
     Route::get('/nextelecom/proxy-customers', function (Request $request) use ($mockMode) {
         $token = $request->header('Authorization');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'Missing authorization token'], 401);
         }
 
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
-        
-        if (!$tenantId) {
+
+        if (! $tenantId) {
             $tenantId = Tenant::first()?->id;
         }
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             Log::warning('Nextelecom: No tenant ID found - skipping database sync');
         }
 
@@ -148,7 +149,7 @@ Route::prefix('api')->group(function () {
                 ['id' => 2, 'name' => 'Tech Solutions Pty Ltd', 'phone' => '03 8888 2222', 'email' => 'sales@techsol.com.au', 'type' => 'business', 'abn' => '98765432101'],
                 ['id' => 3, 'name' => 'John Smith', 'phone' => '0412 555 333', 'email' => 'john@example.com', 'type' => 'person', 'abn' => null],
             ];
-            
+
             if ($tenantId) {
                 try {
                     Customer::syncFromApi($mockCustomers, $tenantId);
@@ -157,12 +158,12 @@ Route::prefix('api')->group(function () {
                     Log::error('Nextelecom: Sync failed', ['error' => $e->getMessage()]);
                 }
             }
-            
+
             return response()->json([
                 'data' => [
-                    'customers' => $mockCustomers
+                    'customers' => $mockCustomers,
                 ],
-                'status' => 'OK'
+                'status' => 'OK',
             ], 200);
         }
 
@@ -176,7 +177,7 @@ Route::prefix('api')->group(function () {
             if ($response->ok()) {
                 $data = $response->json();
                 $customers = [];
-                
+
                 if (is_array($data)) {
                     $customers = $data;
                 } elseif (is_array($data['data']['customers'] ?? null)) {
@@ -186,8 +187,8 @@ Route::prefix('api')->group(function () {
                 } elseif (is_array($data['data'] ?? null)) {
                     $customers = $data['data'];
                 }
-                
-                if (!empty($customers) && $tenantId) {
+
+                if (! empty($customers) && $tenantId) {
                     try {
                         Customer::syncFromApi($customers, $tenantId);
                         Log::info('Nextelecom: Customers synced from API', ['count' => count($customers), 'tenant' => $tenantId]);
@@ -201,14 +202,14 @@ Route::prefix('api')->group(function () {
         } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Proxy Error',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     });
 
-    Route::post('/nextelecom/proxy-customers', function (Request $request) use ($mockMode) {
+    Route::post('/nextelecom/proxy-customers', function (Request $request) {
         $token = $request->header('Authorization');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'Missing authorization token'], 401);
         }
 
@@ -223,20 +224,20 @@ Route::prefix('api')->group(function () {
         } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Proxy Error',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     });
 
     Route::get('/nextelecom/proxy-customer-detail', function (Request $request) use ($mockMode) {
         $customerId = $request->input('customerID');
-        
-        if (!$customerId) {
+
+        if (! $customerId) {
             return response()->json(['error' => 'Customer ID is required'], 400);
         }
 
         $token = $request->header('Authorization');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'Missing authorization token'], 401);
         }
 
@@ -255,7 +256,7 @@ Route::prefix('api')->group(function () {
                         'streetType' => 'ST',
                         'suburb' => 'Brisbane',
                         'state' => 'QLD',
-                        'postcode' => '4000'
+                        'postcode' => '4000',
                     ],
                     'individuals' => [
                         [
@@ -263,10 +264,10 @@ Route::prefix('api')->group(function () {
                             'lastName' => 'Doe',
                             'email' => 'john@example.com',
                             'phone' => '0400111111',
-                            'position' => 'Director'
-                        ]
-                    ]
-                ]
+                            'position' => 'Director',
+                        ],
+                    ],
+                ],
             ], 200);
         }
 
@@ -280,20 +281,20 @@ Route::prefix('api')->group(function () {
         } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Failed to fetch customer details',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     });
 
     Route::get('/nextelecom/proxy-customer-metrics', function (Request $request) use ($mockMode) {
         $customerId = $request->input('customerID');
-        
-        if (!$customerId) {
+
+        if (! $customerId) {
             return response()->json(['error' => 'Customer ID is required'], 400);
         }
 
         $token = $request->header('Authorization');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'Missing authorization token'], 401);
         }
 
@@ -304,8 +305,8 @@ Route::prefix('api')->group(function () {
                     'bandwidth' => 100,
                     'uptime' => 99.9,
                     'activeConnections' => 5,
-                    'totalDataUsage' => 2500
-                ]
+                    'totalDataUsage' => 2500,
+                ],
             ], 200);
         }
 
@@ -314,7 +315,7 @@ Route::prefix('api')->group(function () {
             Log::info('Metrics API Request', [
                 'customerId' => $customerId,
                 'url' => $fullUrl,
-                'token' => substr($token, 0, 50) . '...'
+                'token' => substr($token, 0, 50).'...',
             ]);
 
             $response = Http::timeout(30)->withHeaders([
@@ -327,31 +328,32 @@ Route::prefix('api')->group(function () {
                 'customerId' => $customerId,
                 'status' => $response->status(),
                 'headers' => $response->headers(),
-                'body' => $responseBody
+                'body' => $responseBody,
             ]);
 
             return response()->json($responseBody, $response->status());
         } catch (\Exception $e) {
             Log::error('Metrics API Error', [
                 'customerId' => $customerId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
                 'error' => 'Failed to fetch metrics',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     });
 
     Route::get('/nextelecom/proxy-customer-data', function (Request $request) use ($mockMode) {
         $customerId = $request->input('customerID');
-        
-        if (!$customerId) {
+
+        if (! $customerId) {
             return response()->json(['error' => 'Customer ID is required'], 400);
         }
 
         $token = $request->header('Authorization');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'Missing authorization token'], 401);
         }
 
@@ -360,8 +362,8 @@ Route::prefix('api')->group(function () {
                 'data' => [
                     'id' => $customerId,
                     'recordCount' => 1000,
-                    'lastUpdate' => '2026-03-30T14:15:53Z'
-                ]
+                    'lastUpdate' => '2026-03-30T14:15:53Z',
+                ],
             ], 200);
         }
 
@@ -374,31 +376,32 @@ Route::prefix('api')->group(function () {
             Log::info('Data API Response', [
                 'customerId' => $customerId,
                 'status' => $response->status(),
-                'body' => $response->json()
+                'body' => $response->json(),
             ]);
 
             return response()->json($response->json(), $response->status());
         } catch (\Exception $e) {
             Log::error('Data API Error', [
                 'customerId' => $customerId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
                 'error' => 'Failed to fetch data',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     });
 
     Route::get('/nextelecom/proxy-customer-users', function (Request $request) use ($mockMode) {
         $customerId = $request->input('customerID');
-        
-        if (!$customerId) {
+
+        if (! $customerId) {
             return response()->json(['error' => 'Customer ID is required'], 400);
         }
 
         $token = $request->header('Authorization');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'Missing authorization token'], 401);
         }
 
@@ -410,16 +413,16 @@ Route::prefix('api')->group(function () {
                         'name' => 'John Doe',
                         'email' => 'john@example.com',
                         'role' => 'Admin',
-                        'status' => 'active'
+                        'status' => 'active',
                     ],
                     [
                         'id' => 'USR_002',
                         'name' => 'Jane Smith',
                         'email' => 'jane@example.com',
                         'role' => 'User',
-                        'status' => 'active'
-                    ]
-                ]
+                        'status' => 'active',
+                    ],
+                ],
             ], 200);
         }
 
@@ -432,31 +435,32 @@ Route::prefix('api')->group(function () {
             Log::info('Users API Response', [
                 'customerId' => $customerId,
                 'status' => $response->status(),
-                'body' => $response->json()
+                'body' => $response->json(),
             ]);
 
             return response()->json($response->json(), $response->status());
         } catch (\Exception $e) {
             Log::error('Users API Error', [
                 'customerId' => $customerId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
                 'error' => 'Failed to fetch users',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     });
 
     Route::get('/nextelecom/proxy-customer-integration', function (Request $request) use ($mockMode) {
         $customerId = $request->input('customerID');
-        
-        if (!$customerId) {
+
+        if (! $customerId) {
             return response()->json(['error' => 'Customer ID is required'], 400);
         }
 
         $token = $request->header('Authorization');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'Missing authorization token'], 401);
         }
 
@@ -467,9 +471,9 @@ Route::prefix('api')->group(function () {
                     'xero' => [
                         'enabled' => true,
                         'lastSync' => '2026-03-30T10:00:00Z',
-                        'status' => 'synced'
-                    ]
-                ]
+                        'status' => 'synced',
+                    ],
+                ],
             ], 200);
         }
 
@@ -482,18 +486,19 @@ Route::prefix('api')->group(function () {
             Log::info('Integration API Response', [
                 'customerId' => $customerId,
                 'status' => $response->status(),
-                'body' => $response->json()
+                'body' => $response->json(),
             ]);
 
             return response()->json($response->json(), $response->status());
         } catch (\Exception $e) {
             Log::error('Integration API Error', [
                 'customerId' => $customerId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
                 'error' => 'Failed to fetch integration',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     });
@@ -528,15 +533,15 @@ Route::prefix('api')->group(function () {
 
         return response()->json([
             'data' => [
-                'customers' => $customers
+                'customers' => $customers,
             ],
-            'status' => 'OK'
+            'status' => 'OK',
         ], 200);
     });
 
     Route::get('/nextelecom/proxy-connectivity', function (Request $request) use ($mockMode) {
         $token = $request->header('Authorization');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'Missing authorization token'], 401);
         }
 
@@ -552,7 +557,7 @@ Route::prefix('api')->group(function () {
                             'status' => 'LIVE',
                             'productDetails' => ['name' => 'NBN FTTP Business TC4 100/40Mbps'],
                             'serviceLocation' => ['suburb' => 'Sydney', 'state' => 'NSW', 'postcode' => '2000'],
-                            'ipAddressing' => ['ipCount' => 2, 'ipList' => ['138.252.147.21', '138.252.147.22']]
+                            'ipAddressing' => ['ipCount' => 2, 'ipList' => ['138.252.147.21', '138.252.147.22']],
                         ],
                         [
                             'connectivityID' => 'CON_002',
@@ -562,7 +567,7 @@ Route::prefix('api')->group(function () {
                             'status' => 'LIVE',
                             'productDetails' => ['name' => 'NBN FTTP Business TC4 100/40Mbps'],
                             'serviceLocation' => ['suburb' => 'Melbourne', 'state' => 'VIC', 'postcode' => '3000'],
-                            'ipAddressing' => ['ipCount' => 2, 'ipList' => ['138.252.147.23', '138.252.147.24']]
+                            'ipAddressing' => ['ipCount' => 2, 'ipList' => ['138.252.147.23', '138.252.147.24']],
                         ],
                         [
                             'connectivityID' => 'CON_003',
@@ -572,10 +577,10 @@ Route::prefix('api')->group(function () {
                             'status' => 'PROVISIONING',
                             'productDetails' => ['name' => 'NBN FTTP Business TC4 100/40Mbps'],
                             'serviceLocation' => ['suburb' => 'Brisbane', 'state' => 'QLD', 'postcode' => '4000'],
-                            'ipAddressing' => ['ipCount' => 0, 'ipList' => [null]]
+                            'ipAddressing' => ['ipCount' => 0, 'ipList' => [null]],
                         ],
-                    ]
-                ]
+                    ],
+                ],
             ], 200);
         }
 
@@ -591,9 +596,125 @@ Route::prefix('api')->group(function () {
         }
     });
 
+    Route::get('/nextelecom/proxy-connectivity/{connectionID}', function (Request $request, $connectionID) use ($mockMode) {
+        $token = $request->header('Authorization');
+        if (! $token) {
+            return response()->json(['error' => 'Missing authorization token'], 401);
+        }
+
+        if ($mockMode) {
+            $mockData = [
+                'CON_001' => [
+                    'connectivity' => [
+                        [
+                            'connectivityID' => 'CON_001',
+                            'name' => 'Internet - Sydney',
+                            'carrier' => 'NBN',
+                            'provisioning' => ['status' => 'Complete'],
+                            'serviceAvailability' => ['currentStatus' => 'LIVE', 'cpeMac' => '00:1A:2B:3C:4D:5E'],
+                            'productDetails' => [
+                                [
+                                    'name' => 'NBN FTTP Business TC4 100/40Mbps',
+                                    'fields' => ['Speed' => '100/40 Mbps'],
+                                    'priceGST' => '$450.00/month',
+                                ],
+                            ],
+                            'serviceLocation' => [
+                                'streetNumber' => '123',
+                                'streetName' => 'Pitt',
+                                'streetType' => 'Street',
+                                'suburb' => 'Sydney',
+                                'state' => 'NSW',
+                                'postcode' => '2000',
+                            ],
+                            'ipAddressing' => ['ipList' => ['138.252.147.21', '138.252.147.22']],
+                            'accessDetails' => ['AVCID' => 'AVC000001'],
+                            'outage' => ['plannedOutage' => false, 'unplannedOutage' => false],
+                        ],
+                    ],
+                ],
+                'CON_002' => [
+                    'connectivity' => [
+                        [
+                            'connectivityID' => 'CON_002',
+                            'name' => 'Internet - Melbourne',
+                            'carrier' => 'NBN',
+                            'provisioning' => ['status' => 'Complete'],
+                            'serviceAvailability' => ['currentStatus' => 'LIVE', 'cpeMac' => '00:1A:2B:3C:4D:5F'],
+                            'productDetails' => [
+                                [
+                                    'name' => 'NBN FTTP Business TC4 100/40Mbps',
+                                    'fields' => ['Speed' => '100/40 Mbps'],
+                                    'priceGST' => '$450.00/month',
+                                ],
+                            ],
+                            'serviceLocation' => [
+                                'streetNumber' => '456',
+                                'streetName' => 'Collins',
+                                'streetType' => 'Street',
+                                'suburb' => 'Melbourne',
+                                'state' => 'VIC',
+                                'postcode' => '3000',
+                            ],
+                            'ipAddressing' => ['ipList' => ['138.252.147.23', '138.252.147.24']],
+                            'accessDetails' => ['AVCID' => 'AVC000002'],
+                            'outage' => ['plannedOutage' => false, 'unplannedOutage' => false],
+                        ],
+                    ],
+                ],
+                'CON_003' => [
+                    'connectivity' => [
+                        [
+                            'connectivityID' => 'CON_003',
+                            'name' => 'Backup - Brisbane',
+                            'carrier' => 'NBN',
+                            'provisioning' => ['status' => 'In Progress'],
+                            'serviceAvailability' => ['currentStatus' => 'PROVISIONING', 'cpeMac' => null],
+                            'productDetails' => [
+                                [
+                                    'name' => 'NBN FTTP Business TC4 100/40Mbps',
+                                    'fields' => ['Speed' => '100/40 Mbps'],
+                                    'priceGST' => '$450.00/month',
+                                ],
+                            ],
+                            'serviceLocation' => [
+                                'streetNumber' => '789',
+                                'streetName' => 'Queen',
+                                'streetType' => 'Street',
+                                'suburb' => 'Brisbane',
+                                'state' => 'QLD',
+                                'postcode' => '4000',
+                            ],
+                            'ipAddressing' => ['ipList' => []],
+                            'accessDetails' => ['AVCID' => 'AVC000003'],
+                            'outage' => ['plannedOutage' => false, 'unplannedOutage' => false],
+                        ],
+                    ],
+                ],
+            ];
+
+            if (isset($mockData[$connectionID])) {
+                return response()->json(['data' => $mockData[$connectionID]], 200);
+            }
+
+            return response()->json(['error' => 'Connection not found'], 404);
+        }
+
+        try {
+            $response = Http::timeout(30)->withHeaders([
+                'Accept' => 'application/json',
+                'Authorization' => $token,
+            ])->get("https://api.virtualplatform.com.au/v2/connectivity/connection/{$connectionID}");
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to fetch connectivity details'], 500);
+        }
+    });
+
     Route::get('/nextelecom/proxy-integrations', function (Request $request) use ($mockMode) {
         $token = $request->header('Authorization');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'Missing authorization token'], 401);
         }
 
@@ -603,7 +724,7 @@ Route::prefix('api')->group(function () {
                     ['integrationID' => 'int_001', 'name' => 'Xero Accounting', 'enabled' => true, 'code' => 'XERO'],
                     ['integrationID' => 'int_002', 'name' => 'Salesforce CRM', 'enabled' => true, 'code' => 'SALESFORCE'],
                     ['integrationID' => 'int_003', 'name' => 'QuickBooks', 'enabled' => false, 'code' => 'QB'],
-                ]
+                ],
             ], 200);
         }
 
@@ -621,7 +742,7 @@ Route::prefix('api')->group(function () {
 
     Route::get('/nextelecom/proxy-voip', function (Request $request) use ($mockMode) {
         $token = $request->header('Authorization');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'Missing authorization token'], 401);
         }
 
@@ -636,10 +757,10 @@ Route::prefix('api')->group(function () {
                             'enabled' => true,
                             'numbers' => ['61282120000', '61282120001'],
                             'users' => 5,
-                            'protocol' => 'SIP'
-                        ]
-                    ]
-                ]
+                            'protocol' => 'SIP',
+                        ],
+                    ],
+                ],
             ], 200);
         }
 
@@ -655,9 +776,9 @@ Route::prefix('api')->group(function () {
         }
     });
 
-    Route::get('/nextelecom/proxy-outages-debug', function (Request $request) use ($mockMode) {
+    Route::get('/nextelecom/proxy-outages-debug', function (Request $request) {
         $token = $request->header('Authorization');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'Missing authorization token'], 401);
         }
 
@@ -669,7 +790,7 @@ Route::prefix('api')->group(function () {
 
             return response()->json([
                 'status' => $response->status(),
-                'raw_response' => $response->json()
+                'raw_response' => $response->json(),
             ]);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
@@ -678,7 +799,7 @@ Route::prefix('api')->group(function () {
 
     Route::get('/nextelecom/proxy-outages', function (Request $request) use ($mockMode) {
         $token = $request->header('Authorization');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'Missing authorization token'], 401);
         }
 
@@ -706,13 +827,13 @@ Route::prefix('api')->group(function () {
                             'affectedServices' => ['Internet', 'VoIP', 'Cloud Services'],
                             'updates' => [
                                 ['timestamp' => '2026-03-30 10:30 AM', 'message' => 'Maintenance scheduled for this weekend'],
-                                ['timestamp' => '2026-03-29 02:00 PM', 'message' => 'All customers notified via email']
+                                ['timestamp' => '2026-03-29 02:00 PM', 'message' => 'All customers notified via email'],
                             ],
                             'supportContact' => [
                                 'ticketNumber' => 'TKT-2026-001234',
                                 'email' => 'support@nextelecom.com.au',
-                                'phone' => '1300 TELECOM'
-                            ]
+                                'phone' => '1300 TELECOM',
+                            ],
                         ],
                         [
                             'id' => 'OUT_002',
@@ -735,16 +856,16 @@ Route::prefix('api')->group(function () {
                             'updates' => [
                                 ['timestamp' => '2026-03-30 12:45 PM', 'message' => 'Redundant systems activated, service partially restored'],
                                 ['timestamp' => '2026-03-30 11:30 AM', 'message' => 'Primary equipment failure detected'],
-                                ['timestamp' => '2026-03-30 10:05 AM', 'message' => 'Outage event initiated']
+                                ['timestamp' => '2026-03-30 10:05 AM', 'message' => 'Outage event initiated'],
                             ],
                             'supportContact' => [
                                 'ticketNumber' => 'TKT-2026-001235',
                                 'email' => 'support@nextelecom.com.au',
-                                'phone' => '1300 TELECOM'
-                            ]
-                        ]
-                    ]
-                ]
+                                'phone' => '1300 TELECOM',
+                            ],
+                        ],
+                    ],
+                ],
             ], 200);
         }
 
@@ -756,12 +877,12 @@ Route::prefix('api')->group(function () {
 
             if ($response->ok()) {
                 $data = $response->json();
-                
+
                 $outages = $data['data']['outages'] ?? $data['outages'] ?? $data['data'] ?? [];
-                
+
                 if (is_array($outages)) {
-                    $outages = array_map(function($outage) {
-                        if (!isset($outage['reason'])) {
+                    $outages = array_map(function ($outage) {
+                        if (! isset($outage['reason'])) {
                             // Check in details section first
                             if (isset($outage['details']['reason'])) {
                                 $outage['reason'] = $outage['details']['reason'];
@@ -775,9 +896,9 @@ Route::prefix('api')->group(function () {
                                     $outage['reason'] = $outage['details']['description'];
                                 }
                             }
-                            
+
                             // Fallback to other fields if not in details
-                            if (!isset($outage['reason'])) {
+                            if (! isset($outage['reason'])) {
                                 if (isset($outage['rootCause'])) {
                                     $outage['reason'] = $outage['rootCause'];
                                 } elseif (isset($outage['description'])) {
@@ -795,24 +916,24 @@ Route::prefix('api')->group(function () {
                                 }
                             }
                         }
-                        
-                        if (!isset($outage['plannedStart']) && isset($outage['startTime'])) {
+
+                        if (! isset($outage['plannedStart']) && isset($outage['startTime'])) {
                             $outage['plannedStart'] = $outage['startTime'];
                         }
-                        if (!isset($outage['plannedStart']) && isset($outage['start_time'])) {
+                        if (! isset($outage['plannedStart']) && isset($outage['start_time'])) {
                             $outage['plannedStart'] = $outage['start_time'];
                         }
-                        
-                        if (!isset($outage['plannedEnd']) && isset($outage['endTime'])) {
+
+                        if (! isset($outage['plannedEnd']) && isset($outage['endTime'])) {
                             $outage['plannedEnd'] = $outage['endTime'];
                         }
-                        if (!isset($outage['plannedEnd']) && isset($outage['end_time'])) {
+                        if (! isset($outage['plannedEnd']) && isset($outage['end_time'])) {
                             $outage['plannedEnd'] = $outage['end_time'];
                         }
-                        
+
                         return $outage;
                     }, $outages);
-                    
+
                     if (isset($data['data']['outages'])) {
                         $data['data']['outages'] = $outages;
                     } elseif (isset($data['outages'])) {
@@ -821,10 +942,10 @@ Route::prefix('api')->group(function () {
                         $data = $outages;
                     }
                 }
-                
+
                 return response()->json($data, $response->status());
             }
-            
+
             return response()->json($response->json(), $response->status());
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to fetch outages'], 500);
@@ -907,12 +1028,32 @@ Route::prefix('api')->group(function () {
             $user->save();
 
             // Configure Mailer from DB settings
-            MailService::configureMailer();
+            $tenantId = app('tenant.id') ?? null;
+            $smtpConfigured = MailService::configureMailer($tenantId);
 
             // Send Email
             try {
-                Mail::to($user->email)->send(new OtpMail($otp));
-                Log::info('OTP sent to: '.$user->email);
+                if (! $smtpConfigured) {
+                    Log::warning('SMTP not configured, OTP email not sent', [
+                        'user_id' => $user->id,
+                        'tenant_id' => $tenantId,
+                    ]);
+                } else {
+                    $recipientEmail = EmailModeService::getRecipients($user->email, $tenantId);
+
+                    if (! $recipientEmail) {
+                        Log::warning('Cannot send OTP - no email configured for test mode', [
+                            'user_id' => $user->id,
+                            'tenant_id' => $tenantId,
+                        ]);
+                    } else {
+                        Mail::to($recipientEmail)->send(new OtpMail($otp));
+                        Log::info('OTP sent to: '.$recipientEmail, [
+                            'original_recipient' => $user->email,
+                            'tenant_id' => $tenantId,
+                        ]);
+                    }
+                }
             } catch (\Exception $e) {
                 Log::error('Failed to send OTP to '.$user->email.': '.$e->getMessage());
                 // For testing purposes, we might want to still allow proceeding or log the OTP
@@ -1658,21 +1799,21 @@ Route::prefix('api')->group(function () {
         }
 
         $users = $query->get();
-        $emails = $users->pluck('email')->map(fn($e) => strtolower($e))->toArray();
-        
+        $emails = $users->pluck('email')->map(fn ($e) => strtolower($e))->toArray();
+
         // Fetch all directory users with their assets and tenants to ensure we can match case-insensitively in PHP
         $directoryUsersGrouped = DirectoryUser::with(['assets', 'tenant'])
             ->get()
-            ->filter(fn($du) => in_array(strtolower($du->email), $emails))
-            ->groupBy(fn($du) => strtolower($du->email));
+            ->filter(fn ($du) => in_array(strtolower($du->email), $emails))
+            ->groupBy(fn ($du) => strtolower($du->email));
 
         return response()->json($users->map(function ($user) use ($directoryUsersGrouped) {
             $userEmailLower = strtolower($user->email);
             $directoryUsers = $directoryUsersGrouped->get($userEmailLower, collect());
-            
-            $tenants = $directoryUsers->map(fn($du) => $du->tenant?->name)->filter()->unique()->values()->implode(', ');
-            $licenses = $directoryUsers->map(fn($du) => $du->license_name)->filter()->unique()->values()->implode(', ');
-            
+
+            $tenants = $directoryUsers->map(fn ($du) => $du->tenant?->name)->filter()->unique()->values()->implode(', ');
+            $licenses = $directoryUsers->map(fn ($du) => $du->license_name)->filter()->unique()->values()->implode(', ');
+
             $allAssets = [];
             foreach ($directoryUsers as $du) {
                 foreach ($du->assets as $asset) {
@@ -1833,7 +1974,7 @@ Route::prefix('api')->group(function () {
             'fetchFromGraph' => filter_var($settings->get('fetch_from_graph', 'true'), FILTER_VALIDATE_BOOLEAN),
         ]);
     });
-    
+
     Route::post('/sync/settings', function (Request $request) {
         $settings = $request->only(['autoSyncEnabled', 'syncInterval', 'inactiveCheckTime', 'fetchFromGraph']);
 

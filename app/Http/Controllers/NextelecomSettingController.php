@@ -3,14 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\NextelecomSetting;
+use App\Models\Tenant;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class NextelecomSettingController extends Controller
 {
     public function getApiSettings(Request $request)
     {
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
-        
+
         $setting = NextelecomSetting::getSetting('api', [
             'authType' => 'standard',
             'username' => '',
@@ -27,7 +29,15 @@ class NextelecomSettingController extends Controller
     public function saveApiSettings(Request $request)
     {
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
-        
+
+        // Fallback to first tenant if no tenant_id provided
+        if (! $tenantId) {
+            $firstTenant = Tenant::first();
+            if ($firstTenant) {
+                $tenantId = $firstTenant->id;
+            }
+        }
+
         $validated = $request->validate([
             'authType' => 'required|in:standard,onetime',
             'username' => 'required|string',
@@ -47,7 +57,7 @@ class NextelecomSettingController extends Controller
     public function getTokenData(Request $request)
     {
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
-        
+
         $token = NextelecomSetting::getSetting('api_token', null, $tenantId);
 
         return response()->json([
@@ -59,7 +69,15 @@ class NextelecomSettingController extends Controller
     public function saveTokenData(Request $request)
     {
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
-        
+
+        // Fallback to first tenant if no tenant_id provided
+        if (! $tenantId) {
+            $firstTenant = Tenant::first();
+            if ($firstTenant) {
+                $tenantId = $firstTenant->id;
+            }
+        }
+
         $validated = $request->validate([
             'token' => 'required|string',
             'username' => 'required|string',
@@ -80,7 +98,7 @@ class NextelecomSettingController extends Controller
     public function deleteToken(Request $request)
     {
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
-        
+
         $setting = NextelecomSetting::where('type', 'api_token')
             ->where('tenant_id', $tenantId)
             ->first();
@@ -97,7 +115,7 @@ class NextelecomSettingController extends Controller
     public function getEmailSettings(Request $request)
     {
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
-        
+
         $setting = NextelecomSetting::getSetting('email', [
             'enabled' => false,
             'address' => '',
@@ -105,6 +123,7 @@ class NextelecomSettingController extends Controller
             'port' => '',
             'username' => '',
             'password' => '',
+            'encryption' => 'tls',
         ], $tenantId);
 
         return response()->json([
@@ -115,8 +134,33 @@ class NextelecomSettingController extends Controller
 
     public function saveEmailSettings(Request $request)
     {
+        Log::info('saveEmailSettings called', [
+            'query_tenant_id' => $request->query('tenant_id'),
+            'manager_tenant_id' => app('tenant.manager')->getTenantId(),
+        ]);
+
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
-        
+
+        Log::info('Tenant ID before fallback', [
+            'tenant_id' => $tenantId,
+        ]);
+
+        // Fallback to first tenant if no tenant_id provided
+        if (! $tenantId) {
+            $firstTenant = Tenant::first();
+            Log::info('Using fallback tenant', [
+                'first_tenant' => $firstTenant ? $firstTenant->id : 'none',
+            ]);
+
+            if ($firstTenant) {
+                $tenantId = $firstTenant->id;
+            }
+        }
+
+        Log::info('Final tenant ID for save', [
+            'tenant_id' => $tenantId,
+        ]);
+
         $validated = $request->validate([
             'enabled' => 'required|boolean',
             'address' => 'nullable|email',
@@ -124,9 +168,20 @@ class NextelecomSettingController extends Controller
             'port' => 'nullable|string',
             'username' => 'nullable|string',
             'password' => 'nullable|string',
+            'encryption' => 'nullable|in:none,tls,ssl',
         ]);
 
+        if (! isset($validated['encryption'])) {
+            $validated['encryption'] = 'tls';
+        }
+
         NextelecomSetting::updateSetting('email', $validated, $tenantId);
+
+        Log::info('Email settings saved', [
+            'tenant_id' => $tenantId,
+            'enabled' => $validated['enabled'],
+            'address' => $validated['address'],
+        ]);
 
         return response()->json([
             'success' => true,
@@ -138,7 +193,7 @@ class NextelecomSettingController extends Controller
     public function getSmsSettings(Request $request)
     {
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
-        
+
         $setting = NextelecomSetting::getSetting('sms', [
             'enabled' => false,
             'provider' => '',
@@ -154,7 +209,15 @@ class NextelecomSettingController extends Controller
     public function saveSmsSettings(Request $request)
     {
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
-        
+
+        // Fallback to first tenant if no tenant_id provided
+        if (! $tenantId) {
+            $firstTenant = Tenant::first();
+            if ($firstTenant) {
+                $tenantId = $firstTenant->id;
+            }
+        }
+
         $validated = $request->validate([
             'enabled' => 'required|boolean',
             'provider' => 'nullable|string',
@@ -173,7 +236,7 @@ class NextelecomSettingController extends Controller
     public function getAutoSmsSettings(Request $request)
     {
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
-        
+
         $setting = NextelecomSetting::getSetting('auto_sms', false, $tenantId);
 
         return response()->json([
@@ -185,7 +248,15 @@ class NextelecomSettingController extends Controller
     public function saveAutoSmsSettings(Request $request)
     {
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
-        
+
+        // Fallback to first tenant if no tenant_id provided
+        if (! $tenantId) {
+            $firstTenant = Tenant::first();
+            if ($firstTenant) {
+                $tenantId = $firstTenant->id;
+            }
+        }
+
         $validated = $request->validate([
             'enabled' => 'required|boolean',
         ]);
@@ -202,7 +273,7 @@ class NextelecomSettingController extends Controller
     public function getAllSettings(Request $request)
     {
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
-        
+
         $settings = [
             'api' => NextelecomSetting::getSetting('api', [], $tenantId),
             'token' => NextelecomSetting::getSetting('api_token', null, $tenantId),

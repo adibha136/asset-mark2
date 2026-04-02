@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Wifi, Signal, AlertTriangle, CheckCircle, RefreshCw, Activity, Globe, Zap, Loader2 } from "lucide-react";
 import { useNextElecomToken } from "@/hooks/useNextElecomToken";
+import ConnectivityDetailCard from "../components/ConnectivityDetailCard";
 
 interface Connectivity {
   connectivityID: string;
@@ -47,6 +48,11 @@ export default function Connectivity() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<string>("All");
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [selectedConnectionID, setSelectedConnectionID] = useState<string | null>(null);
+  const [detailData, setDetailData] = useState<any>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchConnectivity();
@@ -81,6 +87,54 @@ export default function Connectivity() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchConnectivityDetail = async (connectionID: string) => {
+    setDetailLoading(true);
+    setDetailError(null);
+    setDetailData(null);
+
+    const token = await getToken();
+    if (!token) {
+      setDetailError("No API token configured");
+      setDetailLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/nextelecom/proxy-connectivity/${connectionID}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/json",
+        },
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const data = await response.json();
+      console.log("API Response:", data);
+      const connectivityDetail = data?.data?.connectivity?.[0];
+      console.log("Connectivity Detail:", connectivityDetail);
+      
+      if (!connectivityDetail) {
+        setDetailError("No data found in response");
+        setDetailLoading(false);
+        return;
+      }
+      
+      setDetailData(connectivityDetail);
+    } catch (err: any) {
+      console.error("Fetch error:", err);
+      setDetailError(err.message || "Failed to fetch connectivity details");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const handleConnectionClick = async (connectionID: string) => {
+    setSelectedConnectionID(connectionID);
+    setDetailDialogOpen(true);
+    await fetchConnectivityDetail(connectionID);
   };
 
   const carriers = ["All", ...new Set(connections.map((c) => c.carrier))];
@@ -185,7 +239,11 @@ export default function Connectivity() {
                 const Icon = statusIcons[conn.status]?.icon || AlertTriangle;
                 const location = `${conn.serviceLocation.suburb}, ${conn.serviceLocation.state} ${conn.serviceLocation.postcode}`;
                 return (
-                  <tr key={conn.connectivityID} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                  <tr 
+                    key={conn.connectivityID} 
+                    className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                    onClick={() => handleConnectionClick(conn.connectivityID)}
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <Wifi className="w-4 h-4 text-sky-500 flex-shrink-0" />
@@ -222,6 +280,15 @@ export default function Connectivity() {
           </table>
         )}
       </div>
+
+      <ConnectivityDetailCard 
+        open={detailDialogOpen}
+        onOpenChange={setDetailDialogOpen}
+        connectionID={selectedConnectionID}
+        data={detailData}
+        loading={detailLoading}
+        error={detailError}
+      />
     </div>
   );
 }

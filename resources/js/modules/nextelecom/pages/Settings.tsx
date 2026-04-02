@@ -78,6 +78,7 @@ export default function NexTelecomSettings() {
     port: "",
     username: "",
     password: "",
+    encryption: "tls",
   });
 
   const [smsSettings, setSmsSettings] = useState({
@@ -661,7 +662,7 @@ Content-Type: application/json
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">SMTP Host</label>
                   <input
@@ -682,6 +683,19 @@ Content-Type: application/json
                     placeholder="587"
                     className="w-full px-4 py-2.5 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all"
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Encryption</label>
+                  <select
+                    value={emailSettings.encryption || 'tls'}
+                    onChange={(e) => updateEmailSettings("encryption", e.target.value)}
+                    className="w-full px-4 py-2.5 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition-all"
+                  >
+                    <option value="none">None</option>
+                    <option value="tls">TLS (STARTTLS)</option>
+                    <option value="ssl">SSL</option>
+                  </select>
                 </div>
               </div>
 

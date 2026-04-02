@@ -18,9 +18,13 @@ class MailService
      */
     public static function configureMailer($tenantId = null)
     {
-        if (!$tenantId) {
+        if (! $tenantId) {
             $tenantId = app('tenant.id') ?? null;
         }
+
+        Log::info('MailService::configureMailer called', [
+            'tenantId' => $tenantId,
+        ]);
 
         $host = null;
         $port = 587;
@@ -32,13 +36,18 @@ class MailService
 
         // First, try to get settings from NextElecom configuration
         if ($tenantId) {
+            Log::debug('MailService: Checking NextElecom settings for tenant', [
+                'tenantId' => $tenantId,
+            ]);
+
             $nextelecomEmail = NextelecomSetting::getSetting('email', null, $tenantId);
-            
+
             Log::info('MailService: NextElecom email setting check', [
                 'tenantId' => $tenantId,
+                'hasSettings' => $nextelecomEmail !== null,
                 'settings' => $nextelecomEmail,
             ]);
-            
+
             if ($nextelecomEmail && isset($nextelecomEmail['enabled']) && $nextelecomEmail['enabled']) {
                 $host = $nextelecomEmail['host'] ?? null;
                 $port = $nextelecomEmail['port'] ?? 587;
@@ -46,24 +55,47 @@ class MailService
                 $password = $nextelecomEmail['password'] ?? null;
                 $fromAddress = $nextelecomEmail['address'] ?? null;
                 $fromName = 'Smart Tech';
+                $encryption = $nextelecomEmail['encryption'] ?? 'tls';
 
-                Log::info('MailService: Using NextElecom email settings', [
-                    'host' => $host,
-                    'port' => $port,
-                    'username' => $username,
-                    'from' => $fromAddress,
+                if (! $host) {
+                    Log::warning('MailService: NextElecom email enabled but host is empty', [
+                        'tenantId' => $tenantId,
+                        'host' => $host,
+                        'address' => $fromAddress,
+                    ]);
+                } else {
+                    Log::info('MailService: Using NextElecom email settings', [
+                        'host' => $host,
+                        'port' => $port,
+                        'username' => $username,
+                        'from' => $fromAddress,
+                        'tenantId' => $tenantId,
+                    ]);
+                }
+            } elseif ($nextelecomEmail) {
+                Log::warning('MailService: NextElecom email settings exist but are disabled', [
+                    'enabled' => $nextelecomEmail['enabled'] ?? false,
+                    'tenantId' => $tenantId,
+                ]);
+            } else {
+                Log::warning('MailService: No NextElecom email settings found', [
                     'tenantId' => $tenantId,
                 ]);
             }
+        } else {
+            Log::warning('MailService: No tenantId provided, cannot check NextElecom settings');
         }
 
         // Fall back to MailSetting (System Settings) if NextElecom not configured
-        if (!$host) {
+        if (! $host) {
+            Log::debug('MailService: NextElecom not configured, falling back to MailSetting');
+
             $settings = MailSetting::all()->pluck('value', 'key');
             $host = $settings->get('mail_host');
-            
-            if (!$host) {
-                Log::info('MailService: No SMTP configuration found in NextElecom or MailSetting, using default mailer.');
+
+            if (! $host) {
+                Log::error('MailService: No SMTP configuration found in NextElecom or MailSetting, using default mailer.');
+
                 return false;
             }
 
@@ -101,12 +133,13 @@ class MailService
 
         Mail::purge();
 
-        Log::debug('MailService: SMTP mailer configured', [
+        Log::info('MailService: SMTP mailer configured successfully', [
             'host' => $host,
             'port' => $port,
             'username' => $username,
             'encryption' => $encryption,
             'from' => $fromAddress,
+            'tenantId' => $tenantId,
         ]);
 
         return true;
