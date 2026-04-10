@@ -43,6 +43,8 @@ const API_URLS: Record<AuthType, string> = {
 };
 
 const MOCK_MODE = false;
+const TOKEN_REFRESH_INTERVAL = 50 * 60 * 1000;
+const TOKEN_CHECK_INTERVAL = 5 * 60 * 1000;
 
 const maskToken = (token: string) =>
   token.length > 20
@@ -55,6 +57,7 @@ export default function NexTelecomSettings() {
   const [savingEmail, setSavingEmail] = useState(false);
   const [savingSms, setSavingSms] = useState(false);
   const [savingAutoSms, setSavingAutoSms] = useState(false);
+  const [refreshingToken, setRefreshingToken] = useState(false);
 
   const [config, setConfig] = useState<ApiConfig>({
     username: "",
@@ -70,6 +73,7 @@ export default function NexTelecomSettings() {
   const [showToken, setShowToken] = useState(false);
   const [copied, setCopied] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [tokenExpiresIn, setTokenExpiresIn] = useState<number | null>(null);
 
   const [emailSettings, setEmailSettings] = useState({
     enabled: false,
@@ -97,15 +101,101 @@ export default function NexTelecomSettings() {
 
   useEffect(() => {
     fetchAllSettings();
+    const refreshInterval = setInterval(() => {
+      checkAndRefreshToken();
+    }, TOKEN_CHECK_INTERVAL);
+    return () => clearInterval(refreshInterval);
   }, []);
+
+  useEffect(() => {
+    if (tokenData?.token) {
+      updateTokenExpiresIn();
+      const expiryInterval = setInterval(updateTokenExpiresIn, 10000);
+      return () => clearInterval(expiryInterval);
+    }
+  }, [tokenData]);
+
+  const parseJwt = (token: string) => {
+    try {
+      const base64Url = token.split(".")[1];
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split("")
+          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+          .join("")
+      );
+      return JSON.parse(jsonPayload);
+    } catch (err) {
+      console.error("Failed to parse JWT:", err);
+      return null;
+    }
+  };
+
+  const updateTokenExpiresIn = () => {
+    if (!tokenData?.token) return;
+    
+    const payload = parseJwt(tokenData.token);
+    if (!payload || !payload.exp) {
+      setTokenExpiresIn(null);
+      return;
+    }
+
+    const expiresAt = payload.exp * 1000;
+    const now = Date.now();
+    const secondsUntilExpiry = Math.floor((expiresAt - now) / 1000);
+    setTokenExpiresIn(Math.max(0, secondsUntilExpiry));
+
+    if (secondsUntilExpiry <= 300 && secondsUntilExpiry > 0) {
+      console.log("[Settings] Token expiring soon, attempting refresh");
+      autoRefreshToken();
+    }
+  };
+
+  const autoRefreshToken = async () => {
+    if (refreshingToken) return;
+    
+    setRefreshingToken(true);
+    try {
+      const response = await api.post("/nextelecom/settings/token/refresh");
+      if (response.data?.data) {
+        setTokenData(response.data.data);
+        setStatus("connected");
+        setErrorMsg("");
+        console.log("[Settings] Token auto-refreshed successfully");
+      }
+    } catch (err) {
+      console.error("[Settings] Auto-refresh failed:", err);
+    } finally {
+      setRefreshingToken(false);
+    }
+  };
+
+  const checkAndRefreshToken = async () => {
+    try {
+      const response = await api.get("/nextelecom/settings/token/status");
+      const { is_expired, needs_refresh } = response.data?.data || {};
+      
+      if (needs_refresh && !refreshingToken) {
+        console.log("[Settings] Token needs refresh, calling autoRefreshToken");
+        await autoRefreshToken();
+      }
+    } catch (err) {
+      console.error("[Settings] Token status check failed:", err);
+    }
+  };
 
   const fetchAllSettings = async () => {
     setLoading(true);
     try {
+      console.log("[Settings] Fetching settings. TenantId:", localStorage.getItem("tenant_id"));
+      
       const [nextelecomRes, emailModeRes] = await Promise.all([
         api.get("/nextelecom/settings"),
         api.get("/email-settings"),
       ]);
+
+      console.log("[Settings] Fetched nextelecom settings:", nextelecomRes.data);
 
       if (nextelecomRes.data) {
         const data = nextelecomRes.data.data;
@@ -114,8 +204,11 @@ export default function NexTelecomSettings() {
           setConfig((prev) => ({ ...prev, ...data.api }));
         }
         if (data.token) {
+          console.log("[Settings] Found saved token:", data.token);
           setTokenData(data.token);
           setStatus("connected");
+        } else {
+          console.log("[Settings] No token found in settings");
         }
         if (data.email) {
           setEmailSettings(data.email);
@@ -310,7 +403,14 @@ export default function NexTelecomSettings() {
           username: config.username.trim(),
         };
         
-        await api.post("/nextelecom/settings/token", record);
+        console.log("[Settings] Saving token to database:", { 
+          record,
+          tenantId: localStorage.getItem("tenant_id"),
+          user: localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")!) : null
+        });
+        
+        const saveResponse = await api.post("/nextelecom/settings/token", record);
+        console.log("[Settings] Token save response:", saveResponse.data);
 
         setTokenData(record);
         setStatus("connected");
@@ -424,6 +524,20 @@ export default function NexTelecomSettings() {
               <p className="text-xs text-muted-foreground mb-0.5">Connected At</p>
               <p className="font-medium">{tokenData.savedAt}</p>
             </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-0.5">Token Expires In</p>
+              <p className="font-medium">
+                {tokenExpiresIn !== null ? (
+                  tokenExpiresIn > 0 ? (
+                    `${Math.floor(tokenExpiresIn / 60)}m ${tokenExpiresIn % 60}s`
+                  ) : (
+                    <span className="text-rose-600">Expired</span>
+                  )
+                ) : (
+                  "—"
+                )}
+              </p>
+            </div>
           </div>
           <div>
             <p className="text-xs text-muted-foreground mb-1">API Token</p>
@@ -450,12 +564,22 @@ export default function NexTelecomSettings() {
               </button>
             </div>
           </div>
-          <button
-            onClick={disconnect}
-            className="flex items-center gap-2 text-sm text-rose-500 hover:text-rose-600 transition-colors font-medium"
-          >
-            <Trash2 className="w-4 h-4" /> Disconnect & Clear Token
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={autoRefreshToken}
+              disabled={refreshingToken || status === "connecting"}
+              className="flex items-center gap-2 text-sm text-sky-600 hover:text-sky-700 disabled:text-muted-foreground transition-colors font-medium"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshingToken ? "animate-spin" : ""}`} />
+              {refreshingToken ? "Refreshing..." : "Refresh Token"}
+            </button>
+            <button
+              onClick={disconnect}
+              className="flex items-center gap-2 text-sm text-rose-500 hover:text-rose-600 transition-colors font-medium"
+            >
+              <Trash2 className="w-4 h-4" /> Disconnect & Clear Token
+            </button>
+          </div>
         </div>
       )}
 

@@ -112,6 +112,8 @@ export default function Clients() {
   const [search, setSearch] = useState("");
   const [domainFilter, setDomainFilter] = useState("all");
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [workflowLoading, setWorkflowLoading] = useState(false);
+  const [workflowConnectivity, setWorkflowConnectivity] = useState<Connectivity[]>([]);
 
   // Extract unique domains from emails
   const availableDomains = useMemo(() => {
@@ -125,13 +127,65 @@ export default function Clients() {
     return Array.from(domains);
   }, [clients]);
 
-  const toggleRow = (id: string) => {
-    setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+  const toggleRow = (id: string, client?: Customer) => {
+    const newState = !expandedRows[id];
+    setExpandedRows(prev => ({ ...prev, [id]: newState }));
+    if (newState && client) {
+      fetchClientConnectivityWorkflow(client);
+    }
+  };
+
+  const fetchClientConnectivityWorkflow = async (client: Customer) => {
+    if (!client.id || !client.name) {
+      console.error("Missing client ID or name", { clientId: client.id, clientName: client.name });
+      return;
+    }
+
+    setWorkflowLoading(true);
+    console.log("Starting workflow for client:", { id: client.id, name: client.name });
+    
+    try {
+      const payload = {
+        client_id: client.id,
+        client_name: client.name,
+      };
+      
+      console.log("Sending workflow request with payload:", payload);
+
+      const response = await fetch("/api/nextelecom/client-connectivity-workflow", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      console.log("Workflow response status:", response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("Workflow error response:", { status: response.status, error: errorData });
+        return;
+      }
+
+      const data = await response.json();
+      console.log("Workflow full response:", data);
+      console.log("Connectivity array:", data.data?.connectivity);
+      console.log("Connectivity count:", data.data?.connectivity?.length);
+      
+      setWorkflowConnectivity(data.data?.connectivity || []);
+    } catch (err: any) {
+      console.error("Workflow fetch error:", { message: err.message, error: err });
+    } finally {
+      setWorkflowLoading(false);
+    }
   };
 
   const openDetails = (client: Customer) => {
     setSelectedClient(client);
     setIsDetailsOpen(true);
+    fetchClientConnectivityWorkflow(client);
   };
 
   // ─── Fetch Clients automatically ──────────────────────────────────────────
@@ -492,7 +546,7 @@ export default function Clients() {
                       "bg-card/40 border-border/40 hover:border-sky-500/30 transition-all duration-300 cursor-pointer overflow-hidden",
                       isExpanded && "ring-1 ring-sky-500/20 border-sky-500/30 bg-card/60"
                     )}
-                    onClick={() => toggleRow(rowId)}
+                    onClick={() => toggleRow(rowId, c)}
                   >
                     <CardContent className="p-0">
                       <div className="grid grid-cols-12 items-center px-6 py-4">
@@ -652,6 +706,163 @@ export default function Clients() {
                             </div>
                           </div>
 
+                          {/* Workflow Connectivity Data in Expanded Row */}
+                          <div className="border-t border-border/20 pt-4 mt-4">
+                            <div className="flex items-center gap-2 mb-3">
+                              <p className="text-[10px] font-bold text-muted-foreground uppercase">Live Connectivity Data</p>
+                              {workflowLoading && <Loader2 className="w-3 h-3 animate-spin text-sky-500" />}
+                            </div>
+                            
+                            {workflowLoading ? (
+                              <p className="text-[9px] text-muted-foreground">Fetching...</p>
+                            ) : workflowConnectivity.length > 0 ? (
+                              <div className="space-y-3">
+                                {workflowConnectivity.map((conn, idx) => (
+                                  <div key={idx} className="bg-muted/30 p-3 rounded-lg border border-border/30 space-y-2">
+                                    <div className="flex items-center justify-between pb-2 border-b border-border/20">
+                                      <div>
+                                        <p className="text-[10px] font-bold text-foreground">{conn.name || "N/A"}</p>
+                                        <p className="text-[8px] text-muted-foreground mt-0.5">{conn.connectivityID || "N/A"}</p>
+                                      </div>
+                                      <Badge 
+                                        variant={conn.status === "LIVE" ? "success" : "muted"}
+                                        className="text-[7px]"
+                                      >
+                                        {conn.status}
+                                      </Badge>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-2 text-[9px]">
+                                      <div>
+                                        <p className="text-muted-foreground font-medium">Product</p>
+                                        <p className="text-foreground">{conn.product || "N/A"}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-muted-foreground font-medium">Carrier</p>
+                                        <p className="text-foreground">{conn.carrier || "N/A"}</p>
+                                      </div>
+                                    </div>
+
+                                    {conn.productDetails && (
+                                      <div className="bg-background/50 p-2 rounded text-[8px]">
+                                        <p className="font-medium text-muted-foreground mb-1">Product Details</p>
+                                        {Array.isArray(conn.productDetails) ? (
+                                          conn.productDetails.map((pd: any, idx: number) => (
+                                            <div key={idx} className="text-foreground">
+                                              <p className="font-medium">{pd.name || "N/A"}</p>
+                                              {pd.fields && (
+                                                <p className="text-muted-foreground">
+                                                  {Object.entries(pd.fields).map(([k, v]) => `${k}: ${v}`).join(" | ")}
+                                                </p>
+                                              )}
+                                              {pd.priceGST && <p className="text-muted-foreground">{pd.priceGST}</p>}
+                                            </div>
+                                          ))
+                                        ) : (
+                                          <p className="text-foreground">{conn.productDetails.name || JSON.stringify(conn.productDetails)}</p>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {conn.serviceLocation && (
+                                      <div className="bg-background/50 p-2 rounded text-[8px]">
+                                        <p className="font-medium text-muted-foreground mb-1">Service Location</p>
+                                        <p className="text-foreground">
+                                          {[conn.serviceLocation.streetNumber, conn.serviceLocation.streetName, conn.serviceLocation.suburb, conn.serviceLocation.state, conn.serviceLocation.postcode]
+                                            .filter(Boolean)
+                                            .join(", ")}
+                                        </p>
+                                      </div>
+                                    )}
+
+                                    {conn.ipAddressing && conn.ipAddressing.ipCount > 0 && (
+                                      <div className="bg-background/50 p-2 rounded text-[8px]">
+                                        <p className="font-medium text-muted-foreground mb-1">IP Addresses ({conn.ipAddressing.ipCount})</p>
+                                        <div className="space-y-0.5">
+                                          {conn.ipAddressing.ipList
+                                            ?.filter(Boolean)
+                                            .map((ip: string, idx: number) => (
+                                              <p key={idx} className="text-foreground font-mono">{ip}</p>
+                                            ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {conn.accessDetails && (
+                                      <div className="bg-background/50 p-2 rounded text-[8px]">
+                                        <p className="font-medium text-muted-foreground mb-1">Access Details</p>
+                                        <div className="space-y-0.5">
+                                          {conn.accessDetails.locationID && (
+                                            <p className="text-foreground"><span className="font-medium">Location ID:</span> {conn.accessDetails.locationID}</p>
+                                          )}
+                                          {conn.accessDetails.AVCID && (
+                                            <p className="text-foreground"><span className="font-medium">AVCID:</span> {conn.accessDetails.AVCID}</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {conn.plannedOutage !== undefined || conn.unplannedOutage !== undefined ? (
+                                      <div className="bg-background/50 p-2 rounded text-[8px]">
+                                        <p className="font-medium text-muted-foreground mb-1">Outage Status</p>
+                                        <div className="space-y-0.5">
+                                          <p className="text-foreground"><span className="font-medium">Planned:</span> {conn.plannedOutage ? "Yes" : "No"}</p>
+                                          <p className="text-foreground"><span className="font-medium">Unplanned:</span> {conn.unplannedOutage ? "Yes" : "No"}</p>
+                                        </div>
+                                      </div>
+                                    ) : null}
+
+                                    {conn.deliveryLayer && (
+                                      <div className="bg-background/50 p-2 rounded text-[8px]">
+                                        <p className="font-medium text-muted-foreground mb-1">Delivery Layer</p>
+                                        <p className="text-foreground">{conn.deliveryLayer}</p>
+                                      </div>
+                                    )}
+
+                                    {conn.serviceAvailability && (
+                                      <div className="bg-background/50 p-2 rounded text-[8px]">
+                                        <p className="font-medium text-muted-foreground mb-1">Service Availability</p>
+                                        <div className="space-y-0.5">
+                                          {conn.serviceAvailability.currentStatus && (
+                                            <p className="text-foreground"><span className="font-medium">Status:</span> {conn.serviceAvailability.currentStatus}</p>
+                                          )}
+                                          {conn.serviceAvailability.cpeMac && (
+                                            <p className="text-foreground"><span className="font-medium">CPE MAC:</span> {conn.serviceAvailability.cpeMac}</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {conn.provisioning && (
+                                      <div className="bg-background/50 p-2 rounded text-[8px]">
+                                        <p className="font-medium text-muted-foreground mb-1">Provisioning</p>
+                                        <p className="text-foreground">{conn.provisioning.status || "N/A"}</p>
+                                      </div>
+                                    )}
+
+                                    {conn.voip && conn.voip.enabled && (
+                                      <div className="bg-emerald-500/10 border border-emerald-500/20 p-2 rounded text-[8px]">
+                                        <p className="font-bold text-emerald-600 mb-1">VoIP Enabled</p>
+                                        {conn.voip.numbers && conn.voip.numbers.length > 0 && (
+                                          <div className="space-y-0.5">
+                                            {conn.voip.numbers.map((num: string, idx: number) => (
+                                              <p key={idx} className="text-foreground font-mono">{num}</p>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {conn.voip.users && (
+                                          <p className="text-muted-foreground mt-0.5">Users: {conn.voip.users}</p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[9px] text-muted-foreground">No connectivity data</p>
+                            )}
+                          </div>
+
                           <div className="text-[10px] text-muted-foreground pt-3 border-t border-border/20">
                             Client ID: <span className="font-mono">{c.id?.substring(0, 8)}...</span>
                           </div>
@@ -668,7 +879,7 @@ export default function Clients() {
 
       {/* ── Client Details Dialog ── */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="sm:max-w-[500px] border-border bg-card shadow-2xl">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto border-border bg-card shadow-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3 text-2xl font-bold">
               <div className="w-10 h-10 rounded-xl bg-sky-500/10 flex items-center justify-center text-sky-500">
@@ -723,6 +934,179 @@ export default function Clients() {
                   </p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Workflow Connectivity Results */}
+          {selectedClient && (
+            <div className="border-t border-border/50 pt-6">
+              <div className="flex items-center gap-2 mb-4">
+                <h3 className="text-sm font-semibold text-foreground">Connectivity Details (Live Data)</h3>
+                {workflowLoading && <Loader2 className="w-4 h-4 animate-spin text-sky-500" />}
+              </div>
+              
+              {workflowLoading ? (
+                <div className="py-4 text-center text-muted-foreground">
+                  <p className="text-xs">Fetching connectivity information...</p>
+                </div>
+              ) : workflowConnectivity.length > 0 ? (
+                <div className="space-y-4">
+                  {workflowConnectivity.map((conn, idx) => (
+                    <Card key={idx} className="bg-muted/20 border-border/40">
+                      <CardContent className="p-4">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between pb-3 border-b border-border/30">
+                            <div>
+                              <h4 className="text-xs font-bold text-foreground">{conn.name}</h4>
+                              <p className="text-[9px] text-muted-foreground mt-0.5">{conn.connectivityID}</p>
+                            </div>
+                            <Badge 
+                              variant={conn.status === "LIVE" ? "success" : "muted"}
+                              className="text-[8px]"
+                            >
+                              {conn.status}
+                            </Badge>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <p className="text-[9px] font-medium text-muted-foreground uppercase">Product</p>
+                              <p className="text-[10px] text-foreground">{conn.product || "N/A"}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-[9px] font-medium text-muted-foreground uppercase">Carrier</p>
+                              <p className="text-[10px] text-foreground">{conn.carrier || "N/A"}</p>
+                            </div>
+                          </div>
+
+                          {conn.productDetails && (
+                            <div className="bg-background/50 p-2 rounded border border-border/30">
+                              <p className="text-[9px] font-medium text-muted-foreground uppercase mb-1">Product Details</p>
+                              <div className="space-y-1">
+                                {Array.isArray(conn.productDetails) ? (
+                                  conn.productDetails.map((pd: any, idx: number) => (
+                                    <div key={idx} className="text-[10px] text-foreground">
+                                      <p className="font-medium">{pd.name || "N/A"}</p>
+                                      {pd.fields && (
+                                        <p className="text-muted-foreground ml-2">
+                                          {Object.entries(pd.fields).map(([k, v]) => `${k}: ${v}`).join(" • ")}
+                                        </p>
+                                      )}
+                                      {pd.priceGST && <p className="text-muted-foreground ml-2">{pd.priceGST}</p>}
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-[10px] text-foreground">{conn.productDetails.name || JSON.stringify(conn.productDetails)}</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {conn.serviceLocation && (
+                            <div className="bg-background/50 p-2 rounded border border-border/30">
+                              <p className="text-[9px] font-medium text-muted-foreground uppercase mb-1">Service Location</p>
+                              <p className="text-[10px] text-foreground">
+                                {[conn.serviceLocation.streetNumber, conn.serviceLocation.streetName, conn.serviceLocation.suburb, conn.serviceLocation.state, conn.serviceLocation.postcode]
+                                  .filter(Boolean)
+                                  .join(", ")}
+                              </p>
+                            </div>
+                          )}
+
+                          {conn.ipAddressing && conn.ipAddressing.ipCount > 0 && (
+                            <div className="bg-background/50 p-2 rounded border border-border/30">
+                              <p className="text-[9px] font-medium text-muted-foreground uppercase mb-1">IP Addressing ({conn.ipAddressing.ipCount})</p>
+                              <div className="space-y-1">
+                                {conn.ipAddressing.ipList
+                                  ?.filter(Boolean)
+                                  .map((ip: string, idx: number) => (
+                                    <p key={idx} className="text-[9px] text-foreground font-mono bg-background px-2 py-1 rounded">
+                                      {ip}
+                                    </p>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {conn.voip && conn.voip.enabled && (
+                            <div className="bg-emerald-500/10 border border-emerald-500/30 p-2 rounded">
+                              <p className="text-[9px] font-bold text-emerald-600 uppercase mb-1">VoIP Enabled</p>
+                              {conn.voip.numbers && conn.voip.numbers.length > 0 && (
+                                <div className="space-y-1">
+                                  {conn.voip.numbers.map((num: string, idx: number) => (
+                                    <p key={idx} className="text-[9px] text-foreground font-mono">{num}</p>
+                                  ))}
+                                </div>
+                              )}
+                              {conn.voip.users && (
+                                <p className="text-[9px] text-muted-foreground mt-1">Users: {conn.voip.users}</p>
+                              )}
+                            </div>
+                          )}
+
+                          {conn.provisioning && (
+                            <div className="space-y-1">
+                              <p className="text-[9px] font-medium text-muted-foreground uppercase">Provisioning</p>
+                              <p className="text-[10px] text-foreground">{conn.provisioning.status || "N/A"}</p>
+                            </div>
+                          )}
+
+                          {conn.accessDetails && (
+                            <div className="bg-background/50 p-2 rounded border border-border/30">
+                              <p className="text-[9px] font-medium text-muted-foreground uppercase mb-1">Access Details</p>
+                              <div className="space-y-1">
+                                {conn.accessDetails.locationID && (
+                                  <p className="text-[9px] text-foreground"><span className="font-medium">Location ID:</span> {conn.accessDetails.locationID}</p>
+                                )}
+                                {conn.accessDetails.AVCID && (
+                                  <p className="text-[9px] text-foreground"><span className="font-medium">AVCID:</span> {conn.accessDetails.AVCID}</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {conn.plannedOutage !== undefined || conn.unplannedOutage !== undefined ? (
+                            <div className="bg-background/50 p-2 rounded border border-border/30">
+                              <p className="text-[9px] font-medium text-muted-foreground uppercase mb-1">Outage Status</p>
+                              <div className="space-y-1">
+                                <p className="text-[9px] text-foreground">
+                                  <span className="font-medium">Planned Outage:</span> {conn.plannedOutage ? "Yes" : "No"}
+                                </p>
+                                <p className="text-[9px] text-foreground">
+                                  <span className="font-medium">Unplanned Outage:</span> {conn.unplannedOutage ? "Yes" : "No"}
+                                </p>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {conn.deliveryLayer && (
+                            <div className="space-y-1">
+                              <p className="text-[9px] font-medium text-muted-foreground uppercase">Delivery Layer</p>
+                              <p className="text-[10px] text-foreground">{conn.deliveryLayer}</p>
+                            </div>
+                          )}
+
+                          {conn.serviceAvailability && (
+                            <div className="bg-background/50 p-2 rounded border border-border/30">
+                              <p className="text-[9px] font-medium text-muted-foreground uppercase mb-1">Service Availability</p>
+                              <div className="space-y-1">
+                                {conn.serviceAvailability.currentStatus && (
+                                  <p className="text-[9px] text-foreground"><span className="font-medium">Status:</span> {conn.serviceAvailability.currentStatus}</p>
+                                )}
+                                {conn.serviceAvailability.cpeMac && (
+                                  <p className="text-[9px] text-foreground"><span className="font-medium">CPE MAC:</span> {conn.serviceAvailability.cpeMac}</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No connectivity information available</p>
+              )}
             </div>
           )}
 

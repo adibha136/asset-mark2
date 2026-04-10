@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\NextelecomSetting;
 use App\Models\Tenant;
+use App\Services\NextelecomService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -12,6 +13,14 @@ class NextelecomSettingController extends Controller
     public function getApiSettings(Request $request)
     {
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+
+        // Fallback to first tenant if no tenant_id provided
+        if (! $tenantId) {
+            $firstTenant = Tenant::first();
+            if ($firstTenant) {
+                $tenantId = $firstTenant->id;
+            }
+        }
 
         $setting = NextelecomSetting::getSetting('api', [
             'authType' => 'standard',
@@ -56,9 +65,34 @@ class NextelecomSettingController extends Controller
 
     public function getTokenData(Request $request)
     {
-        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        $queryTenantId = $request->query('tenant_id');
+        $managerTenantId = app('tenant.manager')->getTenantId();
+        $tenantId = $queryTenantId ?? $managerTenantId;
+
+        Log::info('[NextelecomSetting] getTokenData - tenant resolution', [
+            'query_tenant_id' => $queryTenantId,
+            'manager_tenant_id' => $managerTenantId,
+            'final_tenant_id' => $tenantId,
+        ]);
+
+        // Fallback to first tenant if no tenant_id provided
+        if (! $tenantId) {
+            $firstTenant = Tenant::first();
+            if ($firstTenant) {
+                $tenantId = $firstTenant->id;
+                Log::info('[NextelecomSetting] getTokenData - using first tenant fallback', [
+                    'tenant_id' => $tenantId,
+                ]);
+            }
+        }
 
         $token = NextelecomSetting::getSetting('api_token', null, $tenantId);
+
+        Log::info('[NextelecomSetting] getTokenData - token retrieved', [
+            'tenant_id' => $tenantId,
+            'token_found' => $token ? true : false,
+            'token_username' => $token ? ($token['username'] ?? null) : null,
+        ]);
 
         return response()->json([
             'success' => true,
@@ -68,13 +102,24 @@ class NextelecomSettingController extends Controller
 
     public function saveTokenData(Request $request)
     {
-        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+        $queryTenantId = $request->query('tenant_id');
+        $managerTenantId = app('tenant.manager')->getTenantId();
+        $tenantId = $queryTenantId ?? $managerTenantId;
+
+        Log::info('[NextelecomSetting] saveTokenData - tenant resolution', [
+            'query_tenant_id' => $queryTenantId,
+            'manager_tenant_id' => $managerTenantId,
+            'final_tenant_id' => $tenantId,
+        ]);
 
         // Fallback to first tenant if no tenant_id provided
         if (! $tenantId) {
             $firstTenant = Tenant::first();
             if ($firstTenant) {
                 $tenantId = $firstTenant->id;
+                Log::info('[NextelecomSetting] saveTokenData - using first tenant fallback', [
+                    'tenant_id' => $tenantId,
+                ]);
             }
         }
 
@@ -87,6 +132,12 @@ class NextelecomSettingController extends Controller
         $validated['savedAt'] = now()->toDateTimeString();
 
         NextelecomSetting::updateSetting('api_token', $validated, $tenantId);
+
+        Log::info('[NextelecomSetting] saveTokenData - token saved', [
+            'tenant_id' => $tenantId,
+            'username' => $validated['username'],
+            'authType' => $validated['authType'],
+        ]);
 
         return response()->json([
             'success' => true,
@@ -274,6 +325,14 @@ class NextelecomSettingController extends Controller
     {
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
 
+        // Fallback to first tenant if no tenant_id provided
+        if (! $tenantId) {
+            $firstTenant = Tenant::first();
+            if ($firstTenant) {
+                $tenantId = $firstTenant->id;
+            }
+        }
+
         $settings = [
             'api' => NextelecomSetting::getSetting('api', [], $tenantId),
             'token' => NextelecomSetting::getSetting('api_token', null, $tenantId),
@@ -285,6 +344,70 @@ class NextelecomSettingController extends Controller
         return response()->json([
             'success' => true,
             'data' => $settings,
+        ]);
+    }
+
+    public function refreshToken(Request $request)
+    {
+        $queryTenantId = $request->query('tenant_id');
+        $managerTenantId = app('tenant.manager')->getTenantId();
+        $tenantId = $queryTenantId ?? $managerTenantId;
+
+        if (! $tenantId) {
+            $firstTenant = Tenant::first();
+            if ($firstTenant) {
+                $tenantId = $firstTenant->id;
+            }
+        }
+
+        Log::info('[NextelecomSetting] refreshToken called', [
+            'tenant_id' => $tenantId,
+        ]);
+
+        $tokenData = NextelecomService::refreshToken($tenantId);
+
+        if (! $tokenData) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to refresh token. Please check your credentials and try again.',
+            ], 401);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Token refreshed successfully',
+            'data' => $tokenData,
+        ]);
+    }
+
+    public function checkTokenStatus(Request $request)
+    {
+        $queryTenantId = $request->query('tenant_id');
+        $managerTenantId = app('tenant.manager')->getTenantId();
+        $tenantId = $queryTenantId ?? $managerTenantId;
+
+        if (! $tenantId) {
+            $firstTenant = Tenant::first();
+            if ($firstTenant) {
+                $tenantId = $firstTenant->id;
+            }
+        }
+
+        $tokenData = NextelecomSetting::getSetting('api_token', null, $tenantId);
+        $isExpired = NextelecomService::isTokenExpired($tokenData);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'has_token' => $tokenData ? true : false,
+                'is_expired' => $isExpired,
+                'needs_refresh' => $isExpired,
+                'token_data' => $tokenData ? [
+                    'username' => $tokenData['username'] ?? null,
+                    'authType' => $tokenData['authType'] ?? null,
+                    'savedAt' => $tokenData['savedAt'] ?? null,
+                ] : null,
+            ],
         ]);
     }
 }

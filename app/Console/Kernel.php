@@ -13,6 +13,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\CheckWarrantyExpiry::class,
         \App\Console\Commands\CheckInactiveUsers::class,
         \App\Console\Commands\CheckSecretExpiry::class,
+        \App\Console\Commands\RefreshNextelecomTokens::class,
     ];
 
     protected function schedule(Schedule $schedule)
@@ -35,6 +36,10 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping();
 
         $schedule->command('outages:check')->everyFifteenMinutes();
+
+        $schedule->command('nextelecom:refresh-tokens')
+            ->everyThirtyMinutes()
+            ->withoutOverlapping();
     }
 
     protected function commands()

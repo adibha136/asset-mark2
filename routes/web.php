@@ -25,6 +25,7 @@ use App\Models\User;
 use App\Services\EmailModeService;
 use App\Services\MailService;
 use App\Services\MicrosoftGraphService;
+use App\Services\NextelecomService;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -128,15 +129,16 @@ Route::prefix('api')->group(function () {
     });
 
     Route::get('/nextelecom/proxy-customers', function (Request $request) use ($mockMode) {
-        $token = $request->header('Authorization');
-        if (! $token) {
-            return response()->json(['error' => 'Missing authorization token'], 401);
-        }
-
         $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
 
         if (! $tenantId) {
             $tenantId = Tenant::first()?->id;
+        }
+
+        $token = $request->header('Authorization') ?? NextelecomService::getValidToken($tenantId);
+
+        if (! $token) {
+            return response()->json(['error' => 'Missing authorization token or failed to refresh token'], 401);
         }
 
         if (! $tenantId) {
@@ -208,9 +210,15 @@ Route::prefix('api')->group(function () {
     });
 
     Route::post('/nextelecom/proxy-customers', function (Request $request) {
-        $token = $request->header('Authorization');
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+
+        if (! $tenantId) {
+            $tenantId = Tenant::first()?->id;
+        }
+
+        $token = $request->header('Authorization') ?? NextelecomService::getValidToken($tenantId);
         if (! $token) {
-            return response()->json(['error' => 'Missing authorization token'], 401);
+            return response()->json(['error' => 'Missing authorization token or failed to refresh token'], 401);
         }
 
         try {
@@ -236,9 +244,15 @@ Route::prefix('api')->group(function () {
             return response()->json(['error' => 'Customer ID is required'], 400);
         }
 
-        $token = $request->header('Authorization');
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+
+        if (! $tenantId) {
+            $tenantId = Tenant::first()?->id;
+        }
+
+        $token = $request->header('Authorization') ?? NextelecomService::getValidToken($tenantId);
         if (! $token) {
-            return response()->json(['error' => 'Missing authorization token'], 401);
+            return response()->json(['error' => 'Missing authorization token or failed to refresh token'], 401);
         }
 
         if ($mockMode) {
@@ -293,9 +307,15 @@ Route::prefix('api')->group(function () {
             return response()->json(['error' => 'Customer ID is required'], 400);
         }
 
-        $token = $request->header('Authorization');
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+
+        if (! $tenantId) {
+            $tenantId = Tenant::first()?->id;
+        }
+
+        $token = $request->header('Authorization') ?? NextelecomService::getValidToken($tenantId);
         if (! $token) {
-            return response()->json(['error' => 'Missing authorization token'], 401);
+            return response()->json(['error' => 'Missing authorization token or failed to refresh token'], 401);
         }
 
         if ($mockMode) {
@@ -352,9 +372,15 @@ Route::prefix('api')->group(function () {
             return response()->json(['error' => 'Customer ID is required'], 400);
         }
 
-        $token = $request->header('Authorization');
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+
+        if (! $tenantId) {
+            $tenantId = Tenant::first()?->id;
+        }
+
+        $token = $request->header('Authorization') ?? NextelecomService::getValidToken($tenantId);
         if (! $token) {
-            return response()->json(['error' => 'Missing authorization token'], 401);
+            return response()->json(['error' => 'Missing authorization token or failed to refresh token'], 401);
         }
 
         if ($mockMode) {
@@ -400,9 +426,15 @@ Route::prefix('api')->group(function () {
             return response()->json(['error' => 'Customer ID is required'], 400);
         }
 
-        $token = $request->header('Authorization');
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+
+        if (! $tenantId) {
+            $tenantId = Tenant::first()?->id;
+        }
+
+        $token = $request->header('Authorization') ?? NextelecomService::getValidToken($tenantId);
         if (! $token) {
-            return response()->json(['error' => 'Missing authorization token'], 401);
+            return response()->json(['error' => 'Missing authorization token or failed to refresh token'], 401);
         }
 
         if ($mockMode) {
@@ -459,9 +491,15 @@ Route::prefix('api')->group(function () {
             return response()->json(['error' => 'Customer ID is required'], 400);
         }
 
-        $token = $request->header('Authorization');
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+
+        if (! $tenantId) {
+            $tenantId = Tenant::first()?->id;
+        }
+
+        $token = $request->header('Authorization') ?? NextelecomService::getValidToken($tenantId);
         if (! $token) {
-            return response()->json(['error' => 'Missing authorization token'], 401);
+            return response()->json(['error' => 'Missing authorization token or failed to refresh token'], 401);
         }
 
         if ($mockMode) {
@@ -540,9 +578,15 @@ Route::prefix('api')->group(function () {
     });
 
     Route::get('/nextelecom/proxy-connectivity', function (Request $request) use ($mockMode) {
-        $token = $request->header('Authorization');
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+
+        if (! $tenantId) {
+            $tenantId = Tenant::first()?->id;
+        }
+
+        $token = $request->header('Authorization') ?? NextelecomService::getValidToken($tenantId);
         if (! $token) {
-            return response()->json(['error' => 'Missing authorization token'], 401);
+            return response()->json(['error' => 'Missing authorization token or failed to refresh token'], 401);
         }
 
         if ($mockMode) {
@@ -597,9 +641,15 @@ Route::prefix('api')->group(function () {
     });
 
     Route::get('/nextelecom/proxy-connectivity/{connectionID}', function (Request $request, $connectionID) use ($mockMode) {
-        $token = $request->header('Authorization');
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+
+        if (! $tenantId) {
+            $tenantId = Tenant::first()?->id;
+        }
+
+        $token = $request->header('Authorization') ?? NextelecomService::getValidToken($tenantId);
         if (! $token) {
-            return response()->json(['error' => 'Missing authorization token'], 401);
+            return response()->json(['error' => 'Missing authorization token or failed to refresh token'], 401);
         }
 
         if ($mockMode) {
@@ -713,9 +763,15 @@ Route::prefix('api')->group(function () {
     });
 
     Route::get('/nextelecom/proxy-integrations', function (Request $request) use ($mockMode) {
-        $token = $request->header('Authorization');
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+
+        if (! $tenantId) {
+            $tenantId = Tenant::first()?->id;
+        }
+
+        $token = $request->header('Authorization') ?? NextelecomService::getValidToken($tenantId);
         if (! $token) {
-            return response()->json(['error' => 'Missing authorization token'], 401);
+            return response()->json(['error' => 'Missing authorization token or failed to refresh token'], 401);
         }
 
         if ($mockMode) {
@@ -741,9 +797,15 @@ Route::prefix('api')->group(function () {
     });
 
     Route::get('/nextelecom/proxy-voip', function (Request $request) use ($mockMode) {
-        $token = $request->header('Authorization');
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+
+        if (! $tenantId) {
+            $tenantId = Tenant::first()?->id;
+        }
+
+        $token = $request->header('Authorization') ?? NextelecomService::getValidToken($tenantId);
         if (! $token) {
-            return response()->json(['error' => 'Missing authorization token'], 401);
+            return response()->json(['error' => 'Missing authorization token or failed to refresh token'], 401);
         }
 
         if ($mockMode) {
@@ -777,9 +839,15 @@ Route::prefix('api')->group(function () {
     });
 
     Route::get('/nextelecom/proxy-outages-debug', function (Request $request) {
-        $token = $request->header('Authorization');
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+
+        if (! $tenantId) {
+            $tenantId = Tenant::first()?->id;
+        }
+
+        $token = $request->header('Authorization') ?? NextelecomService::getValidToken($tenantId);
         if (! $token) {
-            return response()->json(['error' => 'Missing authorization token'], 401);
+            return response()->json(['error' => 'Missing authorization token or failed to refresh token'], 401);
         }
 
         try {
@@ -798,9 +866,15 @@ Route::prefix('api')->group(function () {
     });
 
     Route::get('/nextelecom/proxy-outages', function (Request $request) use ($mockMode) {
-        $token = $request->header('Authorization');
+        $tenantId = $request->query('tenant_id') ?? app('tenant.manager')->getTenantId();
+
+        if (! $tenantId) {
+            $tenantId = Tenant::first()?->id;
+        }
+
+        $token = $request->header('Authorization') ?? NextelecomService::getValidToken($tenantId);
         if (! $token) {
-            return response()->json(['error' => 'Missing authorization token'], 401);
+            return response()->json(['error' => 'Missing authorization token or failed to refresh token'], 401);
         }
 
         if ($mockMode) {
@@ -952,12 +1026,259 @@ Route::prefix('api')->group(function () {
         }
     });
 
+    Route::post('/nextelecom/client-connectivity-workflow', function (Request $request) use ($mockMode) {
+        $clientId = $request->input('client_id');
+        $clientName = $request->input('client_name');
+
+        if (!$clientId || !$clientName) {
+            return response()->json([
+                'error' => 'Missing required parameters',
+                'message' => 'Both client_id and client_name are required'
+            ], 400);
+        }
+
+        try {
+            Log::info('Client Connectivity Workflow Started', [
+                'clientId' => $clientId,
+                'clientName' => $clientName,
+                'mockMode' => $mockMode,
+            ]);
+
+            $token = null;
+            
+            if ($mockMode) {
+                Log::info('Mock Mode: Returning sample data');
+                $token = 'mock_token_' . Str::random(40);
+            } else {
+                Log::info('Real Mode: Calling wholesale login API');
+                
+                // Get all tenants
+                $tenantId = app('tenant.id');
+                if (!$tenantId) {
+                    $firstTenant = \App\Models\Tenant::first();
+                    $tenantId = $firstTenant?->id;
+                }
+                
+                Log::info('Tenant context', [
+                    'tenantId' => $tenantId,
+                    'hasTenant' => $tenantId ? true : false,
+                ]);
+                
+                // Get all api_token settings for debugging
+                $allTokenSettings = \App\Models\NextelecomSetting::where('type', 'api_token')->get();
+                Log::info('All token settings in DB', [
+                    'count' => $allTokenSettings->count(),
+                    'tenants' => $allTokenSettings->map(function($s) { return $s->tenant_id; })->toArray(),
+                ]);
+                
+                // Step 1: Get stored token from settings
+                $tokenData = \App\Models\NextelecomSetting::getSetting('api_token', null, $tenantId);
+                
+                Log::info('Token Data Retrieved', [
+                    'tenantId' => $tenantId,
+                    'tokenDataType' => gettype($tokenData),
+                    'tokenDataKeys' => is_array($tokenData) ? implode(', ', array_keys($tokenData)) : 'not_array',
+                    'fullTokenData' => json_encode($tokenData),
+                ]);
+                
+                $storedToken = is_array($tokenData) ? ($tokenData['token'] ?? null) : null;
+                
+                Log::info('Stored Token Status', [
+                    'hasToken' => $storedToken ? true : false,
+                    'tokenLength' => $storedToken ? strlen($storedToken) : 0,
+                    'tokenType' => gettype($storedToken),
+                ]);
+                
+                if (!$storedToken) {
+                    Log::error('No token found in settings', [
+                        'allTokenData' => json_encode($tokenData),
+                        'tenantId' => $tenantId,
+                    ]);
+                    return response()->json([
+                        'error' => 'Authentication required',
+                        'message' => 'No API token found. Please connect in Settings first.',
+                    ], 401);
+                }
+                
+                // Step 2: POST to wholesale/login with customer_id and token
+                Log::info('Sending wholesale login request', [
+                    'clientId' => $clientId,
+                    'clientName' => $clientName,
+                    'tokenLength' => strlen($storedToken),
+                ]);
+                
+                $loginPayload = [
+                    'customerID' => $clientId,
+                ];
+                
+                Log::info('Login Payload Before Send', [
+                    'payload' => json_encode($loginPayload),
+                    'hasCustomerID' => isset($loginPayload['customerID']),
+                ]);
+                
+                $loginResponse = Http::timeout(30)->withHeaders([
+                    'Content-Type' => 'application/json',
+                    'Authorization' => 'Bearer ' . $storedToken,
+                ])->post('https://api.virtualplatform.com.au/v2/wholesale/login', $loginPayload);
+
+                Log::info('Wholesale Login Response', [
+                    'status' => $loginResponse->status(),
+                    'body' => $loginResponse->body(),
+                ]);
+
+                if ($loginResponse->status() !== 200) {
+                    Log::error('Wholesale login failed', [
+                        'status' => $loginResponse->status(),
+                        'response' => $loginResponse->body(),
+                    ]);
+                    
+                    return response()->json([
+                        'error' => 'Login failed',
+                        'message' => 'Failed to authenticate with client ID',
+                        'status' => $loginResponse->status(),
+                    ], $loginResponse->status());
+                }
+
+                $loginData = $loginResponse->json();
+                
+                // Try to extract token from response, fallback to stored token if not provided
+                $token = $loginData['data']['token'] ?? $loginData['token'] ?? $storedToken;
+
+                if (!$token) {
+                    Log::error('Token extraction failed', [
+                        'loginData' => $loginData,
+                    ]);
+                    
+                    return response()->json([
+                        'error' => 'Token extraction failed',
+                        'message' => 'Login successful but no token found in response',
+                    ], 500);
+                }
+                
+                Log::info('Token ready for connectivity call', [
+                    'tokenFromResponse' => isset($loginData['data']['token']) || isset($loginData['token']),
+                    'usingStoredToken' => $token === $storedToken,
+                ]);
+            }
+
+            if ($mockMode) {
+                // Mock connectivity data
+                Log::info('Mock Mode: Returning mock connectivity data');
+                $allConnectivity = [
+                    [
+                        'connectivityID' => 'CON_001',
+                        'name' => $clientName,
+                        'product' => 'FTTP-10040-1-STD',
+                        'carrier' => 'NBN',
+                        'status' => 'LIVE',
+                        'productDetails' => [
+                            [
+                                'name' => 'NBN FTTP Business TC4 100/40Mbps',
+                                'fields' => ['Speed' => '100/40 Mbps'],
+                                'priceGST' => '$450.00/month',
+                            ]
+                        ],
+                        'serviceLocation' => [
+                            'streetNumber' => '123',
+                            'streetName' => 'Main',
+                            'suburb' => 'Sydney',
+                            'state' => 'NSW',
+                            'postcode' => '2000'
+                        ],
+                        'ipAddressing' => [
+                            'ipCount' => 2,
+                            'ipList' => ['138.252.147.21', '138.252.147.22']
+                        ],
+                        'voip' => [
+                            'enabled' => true,
+                            'numbers' => ['61282120000', '61282120001'],
+                            'users' => 5,
+                        ],
+                        'provisioning' => ['status' => 'Complete'],
+                    ],
+                ];
+            } else {
+                // Real API call
+                Log::info('Real Mode: Calling connectivity API');
+                
+                $connectivityResponse = Http::timeout(30)->withHeaders([
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type' => 'application/json',
+                ])->get('https://api.virtualplatform.com.au/v2/connectivity/connections');
+
+                Log::info('Connectivity Response', [
+                    'clientId' => $clientId,
+                    'status' => $connectivityResponse->status(),
+                    'body' => $connectivityResponse->body(),
+                ]);
+
+                if ($connectivityResponse->status() !== 200) {
+                    Log::error('Connectivity fetch failed', [
+                        'status' => $connectivityResponse->status(),
+                        'response' => $connectivityResponse->body(),
+                    ]);
+                    
+                    return response()->json([
+                        'error' => 'Failed to fetch connectivity',
+                        'message' => 'Could not retrieve connectivity details',
+                        'status' => $connectivityResponse->status(),
+                    ], $connectivityResponse->status());
+                }
+
+                $connectivityData = $connectivityResponse->json();
+                $allConnectivity = $connectivityData['data']['connectivity'] ?? $connectivityData['connectivity'] ?? [];
+            }
+
+            // Return all connectivity results without filtering by customer name
+            $filteredConnectivity = $allConnectivity;
+
+            Log::info('Connectivity Filtered Details', [
+                'clientId' => $clientId,
+                'clientName' => $clientName,
+                'totalConnections' => count($allConnectivity),
+                'filteredConnections' => count($filteredConnectivity),
+                'allConnectionNames' => array_map(function($c) { return $c['name'] ?? 'NO_NAME'; }, $allConnectivity),
+                'firstResult' => count($filteredConnectivity) > 0 ? json_encode($filteredConnectivity[0]) : 'NONE',
+            ]);
+
+            return response()->json([
+                'status' => 200,
+                'data' => [
+                    'token' => $token,
+                    'clientId' => $clientId,
+                    'clientName' => $clientName,
+                    'connectivity' => $filteredConnectivity,
+                    'summary' => [
+                        'totalConnections' => count($allConnectivity),
+                        'matchingConnections' => count($filteredConnectivity),
+                    ]
+                ]
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Client Connectivity Workflow Error', [
+                'clientId' => $clientId,
+                'clientName' => $clientName,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'error' => 'Workflow execution failed',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    });
+
     Route::prefix('nextelecom/settings')->group(function () {
         Route::get('/', [NextelecomSettingController::class, 'getAllSettings']);
         Route::get('/api', [NextelecomSettingController::class, 'getApiSettings']);
         Route::post('/api', [NextelecomSettingController::class, 'saveApiSettings']);
         Route::get('/token', [NextelecomSettingController::class, 'getTokenData']);
         Route::post('/token', [NextelecomSettingController::class, 'saveTokenData']);
+        Route::post('/token/refresh', [NextelecomSettingController::class, 'refreshToken']);
+        Route::get('/token/status', [NextelecomSettingController::class, 'checkTokenStatus']);
         Route::delete('/token', [NextelecomSettingController::class, 'deleteToken']);
         Route::get('/email', [NextelecomSettingController::class, 'getEmailSettings']);
         Route::post('/email', [NextelecomSettingController::class, 'saveEmailSettings']);
